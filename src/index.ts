@@ -126,6 +126,24 @@ datasetCmd
     }
   });
 
+datasetCmd
+  .command('pull-openfda')
+  .description('Download and parse 18+ years of openFDA drug enforcement recall records into clean cGMP JSON')
+  .option('-l, --limit <count>', 'Maximum number of cGMP records to transform', '2000')
+  .option('-s, --seed', 'Seed parsed records directly into SQLite knowledge base')
+  .action(async (options) => {
+    try {
+      const { runIngestion } = require('./ingest/openfda_recalls');
+      await runIngestion({
+        maxRecords: parseInt(options.limit, 10),
+        seedDb: options.seed,
+      });
+    } catch (err: any) {
+      console.error(`openFDA ingestion failed: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
 // 7. Config Command
 const configCmd = program
   .command('config [action] [key] [value]')

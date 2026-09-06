@@ -15,6 +15,7 @@
     "explain": "tsx src/index.ts explain",
     "export": "tsx src/index.ts export",
     "config": "tsx src/index.ts config",
+    "ingest:openfda": "tsx src/ingest/openfda_recalls.ts",
     "demo": "tsx src/index.ts scan sample_sops/sop_deviation_handling.md"
   },
   "keywords": [
