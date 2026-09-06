@@ -1,0 +1,26 @@
+STANDARD OPERATING PROCEDURE: CLEANING VALIDATION PROTOCOL
+SOP Number: SOP-VAL-601-REV4
+Effective Date: 2023-11-01
+Facility: Sterile Fill-Finish & Oral Liquids
+
+1.0 Purpose
+This SOP details the cleaning procedures, acceptance criteria, and swab sampling routines for all product-contact stainless steel surfaces and processing vessels.
+
+2.0 Scope
+Applies to mixing tanks T-101 through T-105, transfer lines, and filling manifolds.
+
+3.0 Cleaning Agents & Detergent Preparation
+Neutral enzymatic detergent shall be diluted to 2.0% v/v with purified water at 60C.
+
+4.1 Hold Time Limits
+Equipment cleaning shall occur following campaign completion. Clean hold time (CHT) shall be observed for sterile fill manifolds; parts wrapped in cleanroom wraps may remain on staging racks until the next scheduled batch campaign without microbial re-swabbing.
+
+5.0 Visual Inspection & Swab Verification
+5.1 Visual inspection of tanks shall be conducted under white light (min 500 lux).
+5.2 Swab testing for Total Organic Carbon (TOC) and active ingredient residue will be performed periodically following campaign changeovers. If swab results are delayed from the analytical laboratory, equipment may be released under conditional QA authorization.
+
+6.0 Acceptance Criteria
+Surfaces are clean when TOC residue does not exceed 10 ppm and visual inspection reveals no visible particulate matter or discoloration.
+
+7.0 Documentation and Logbook Clearance
+Operating personnel shall sign the room logbook upon completion of line clearance.

@@ -1,0 +1,48 @@
+{
+  "name": "compliance-check",
+  "version": "1.0.0",
+  "description": "Pharma SOP Compliance Checker CLI - FDA Warning Letter & cGMP Risk Engine",
+  "main": "dist/index.js",
+  "bin": {
+    "compliance-check": "./bin/compliance-check.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test test/**/*.ts",
+    "prepublishOnly": "npm run build",
+    "start": "tsx src/index.ts",
+    "scan": "tsx src/index.ts scan",
+    "explain": "tsx src/index.ts explain",
+    "export": "tsx src/index.ts export",
+    "config": "tsx src/index.ts config",
+    "demo": "tsx src/index.ts scan sample_sops/sop_deviation_handling.md"
+  },
+  "keywords": [
+    "pharma",
+    "compliance",
+    "sop",
+    "fda",
+    "cgmp",
+    "21cfr211",
+    "cli"
+  ],
+  "author": "Jainil (Aexaware Infotech)",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "boxen": "^5.1.2",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "mammoth": "^1.9.0",
+    "ora": "^5.4.1",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.23.13",
+    "typescript": "^5.8.2"
+  }
+}
