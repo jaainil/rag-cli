@@ -143,7 +143,8 @@ Respond strictly in JSON format matching this schema:
   "isRisk": boolean,
   "riskLevel": "HIGH" | "MEDIUM" | "LOW",
   "confidence": number, // integer 0-100
-  "issue": "Concise 1-sentence issue summary",
+  "flawedSopSnippet": "The exact verbatim sentence or clause quoted from the SOP section that contains the regulatory defect or ambiguous wording",
+  "issue": "Concise 1-sentence issue summary explaining the flaw",
   "regulation": "Exact 21 CFR citation (e.g. 21 CFR 211.192)",
   "detailedReasoning": "2-3 sentences explaining why this clause violates cGMP or risks 483 / Warning Letter",
   "remediation": "Audit-ready suggested clause text that resolves the defect"
@@ -153,12 +154,13 @@ Respond strictly in JSON format matching this schema:
 ${section.content}
 
 [MATCHED FDA PRECEDENT]
-Citation: ${topPrecedent.cfr_citation}
+Citation: ${topPrecedent.cfr_citation} (${topPrecedent.category})
 Source: ${topPrecedent.source} (${topPrecedent.company_redacted})
+Date Issued: ${topPrecedent.date_issued}
 FDA Finding: "${topPrecedent.issue_summary}"
 FDA Excerpt: "${topPrecedent.excerpt}"
 
-Does this section have a regulatory defect or compliance risk? Provide structured JSON.`;
+Does this section have a regulatory defect or compliance risk? Provide structured JSON quoting the exact flawed SOP text.`;
 
     try {
       const res = await fetch(`${this.baseUrl}/api/generate`, {
@@ -189,10 +191,14 @@ Does this section have a regulatory defect or compliance risk? Provide structure
       }
 
       const flagId = `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`;
+      const { snippet, startLine } = this.locateSopFlaw(section, parsed.flawedSopSnippet);
+
       return {
         id: flagId,
         sectionRef: section.sectionNumber,
         sectionTitle: section.title,
+        startLine,
+        sopTextSnippet: snippet,
         riskLevel: (parsed.riskLevel || topPrecedent.severity) as RiskLevel,
         confidence: Math.min(99, Math.max(40, parsed.confidence || 85)),
         issue: parsed.issue || topPrecedent.issue_summary,
@@ -204,6 +210,7 @@ Does this section have a regulatory defect or compliance risk? Provide structure
           dateIssued: topPrecedent.date_issued,
           excerpt: topPrecedent.excerpt,
           cfrCitation: topPrecedent.cfr_citation,
+          category: topPrecedent.category,
           remediationGuidance: parsed.remediation || topPrecedent.remediation_guidance,
         },
         detailedReasoning: parsed.detailedReasoning || `${section.title} exhibits regulatory gaps under ${topPrecedent.cfr_citation}.`,
@@ -213,6 +220,45 @@ Does this section have a regulatory defect or compliance risk? Provide structure
     } catch (err: any) {
       return null;
     }
+  }
+
+  private locateSopFlaw(
+    section: SOPSection,
+    modelQuote?: string
+  ): { snippet: string; startLine: number } {
+    const rawLines = section.content.split(/\r?\n/);
+    const trimmedLines = rawLines.map((l) => l.trim());
+
+    if (modelQuote && modelQuote.trim().length > 8) {
+      const cleanQuote = modelQuote.trim().replace(/^["']|["']$/g, '');
+      for (let i = 0; i < trimmedLines.length; i++) {
+        if (
+          trimmedLines[i].length > 0 &&
+          (trimmedLines[i].includes(cleanQuote) ||
+            cleanQuote.includes(trimmedLines[i]) ||
+            trimmedLines[i].toLowerCase().includes(cleanQuote.slice(0, 30).toLowerCase()))
+        ) {
+          return {
+            snippet: cleanQuote.length >= trimmedLines[i].length ? cleanQuote : trimmedLines[i],
+            startLine: section.startLine + i + 1,
+          };
+        }
+      }
+    }
+
+    for (let i = 0; i < trimmedLines.length; i++) {
+      if (trimmedLines[i].length > 20) {
+        return {
+          snippet: trimmedLines[i],
+          startLine: section.startLine + i + 1,
+        };
+      }
+    }
+
+    return {
+      snippet: section.content.slice(0, 200),
+      startLine: section.startLine,
+    };
   }
 
   /**

@@ -32,6 +32,7 @@ export interface MatchedPrecedentRef {
   dateIssued: string;
   excerpt: string;
   cfrCitation: string;
+  category?: string;
   remediationGuidance?: string;
   similarityScore?: number;
 }
@@ -40,6 +41,9 @@ export interface FlaggedIssue {
   id: string;
   sectionRef: string;
   sectionTitle: string;
+  startLine?: number;
+  endLine?: number;
+  sopTextSnippet?: string; // Exact verbatim clause/sentence from the audited SOP
   riskLevel: RiskLevel;
   confidence: number; // 0 - 100
   issue: string;

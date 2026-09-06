@@ -154,32 +154,50 @@ $ compliance-check scan sample_sops/sop_deviation_handling.md
 
 ✔ Loading SOP...                     done (3.8 KB)
 ✔ Parsing sections...                10 sections found
-✔ Embedding + retrieving matches...  done (225 FDA precedents indexed)
+✔ Embedding + retrieving matches...  done (725 FDA precedents via PostgreSQL 18 pgvector + Dragonfly cache)
 ✔ Running risk analysis...           done
 
 ╭─────────────────────────────────────────────────╮
 │  SOP Compliance Risk Audit Report               │
 │  File: sop_deviation_handling.md                │
-│  Scanned: Sun, 06 Sep 2026 08:53:57 GMT         │
+│  Scanned: Sun, 06 Sep 2026 10:48:30 GMT         │
 │  Sections scanned: 10   Flags found: 4          │
 │  Risk Breakdown: 2 HIGH  |  1 MEDIUM  |  1 LOW  │
 ╰─────────────────────────────────────────────────╯
 
- HIGH    Section 4.2 — Deviation Handling & Investigation Timeframes
-  Issue: No defined timeline for deviation escalation
-  Regulation: 21 CFR 211.192 (Unexplained discrepancies and failure investigations)
-  Matched precedent: FDA Form 483 Observation (2024) - Facility #1108
-    "When particulate contamination was confirmed in vial filling line 3
-     (batch #2020-09), your quality unit failed to extend the investigation..."
-  Confidence: 87%
+ HIGH    Section 4.2 — Deviation Handling & Investigation Timeframes [Line 29]
+  ▶ Current SOP Flawed Text:
+    "Investigations shall proceed expeditiously and be completed as soon as
+     feasible depending on operational constraints. In complex multi-departmental
+     investigations, target dates may be extended upon verbal concurrence..."
+  Compliance Defect: No defined timeline for deviation escalation
+  Statutory Regulation: 21 CFR 211.192 (Unexplained discrepancies and failure investigations)
+  ▶ Cited Historical FDA Precedent (Past Enforcement Data):
+    Citation: FDA Warning Letter WL-320-24-72
+    Target Facility: Topical and Transdermal Manufacturing Site (Redacted) | Issued: 2024-03-15
+    Past Historical Enforcement Excerpt:
+      "Investigations into assay failures and batch yield discrepancies
+       repeatedly concluded 'operator error' without conducting thorough
+       equipment calibration checks or extending timelines under QA supervision..."
+    Precedent Remediation Standard: Mandate explicit 30-day investigation completion with QA risk assessment.
+  Auditor Confidence: 87%
 
- MEDIUM  Section 6.1 — Cleaning Validation Frequency & Verification
-  Issue: Frequency stated as "periodic" without a defined interval
-  Regulation: 21 CFR 211.67 (Equipment cleaning and maintenance)
-  Matched precedent: FDA Form 483 Observation (2024) - Facility #1006
-    "Your cleaning validation SOP states that visual and swab verification
-     will be performed "periodically" on multi-product fluid bed dryers,..."
-  Confidence: 71%
+ MEDIUM  Section 6.1 — Cleaning Validation Frequency & Verification [Line 35]
+  ▶ Current SOP Flawed Text:
+    "Equipment cleaning verification for multi-product granulators and tablet
+     compression presses shall be performed periodically by designated line
+     clearance operators."
+  Compliance Defect: Frequency stated as "periodic" without a defined interval
+  Statutory Regulation: 21 CFR 211.67 (Equipment cleaning and maintenance)
+  ▶ Cited Historical FDA Precedent (Past Enforcement Data):
+    Citation: FDA Form 483 Observation (2024) - Facility #1006
+    Target Facility: Topical and Transdermal Manufacturing Site (Redacted) | Issued: 2024-07-15
+    Past Historical Enforcement Excerpt:
+      "Your cleaning validation SOP states that visual and swab verification
+       will be performed 'periodically' on multi-product fluid bed dryers,
+       without defining an objective frequency, batch limit, or maximum hold time..."
+    Precedent Remediation Standard: Replace subjective wording with explicit campaign batch limits.
+  Auditor Confidence: 71%
 
 ──────────────────────────────────────────────────────────────────────
 Run compliance-check explain 4.2 for full reasoning on a section.

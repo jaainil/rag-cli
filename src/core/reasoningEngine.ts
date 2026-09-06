@@ -93,10 +93,18 @@ export class RegulatoryReasoningEngine {
       (section.sectionNumber === '9.0' || text.includes('recordkeeping') || text.includes('closure approval') || text.includes('responsible-party')) &&
       (text.includes('either the lead manufacturing supervisor') || text.includes('supervisor or the assigned qa') || text.includes('shift availability') || text.includes('ambiguity in responsible'))
     ) {
+      const flaw = this.extractFlawedClause(section, [
+        'either the lead manufacturing supervisor',
+        'shift availability',
+        'record archives may be administered',
+      ]);
+
       return {
         id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
         sectionRef: section.sectionNumber,
         sectionTitle: section.title,
+        startLine: flaw.startLine,
+        sopTextSnippet: flaw.snippet,
         riskLevel: 'LOW',
         confidence: 54,
         issue: 'Minor ambiguity in responsible-party assignment',
@@ -132,10 +140,19 @@ export class RegulatoryReasoningEngine {
         issue = 'Provisional/conditional equipment release prior to analytical swab results';
       }
 
+      const flaw = this.extractFlawedClause(section, [
+        'without microbial re-swabbing',
+        'conditional qa authorization',
+        'periodic',
+        'visual inspection alone',
+      ]);
+
       return {
         id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
         sectionRef: section.sectionNumber,
         sectionTitle: section.title,
+        startLine: flaw.startLine,
+        sopTextSnippet: flaw.snippet,
         riskLevel,
         confidence,
         issue,
@@ -154,10 +171,19 @@ export class RegulatoryReasoningEngine {
       (section.sectionNumber === '4.2' || text.includes('investigation timeframe') || text.includes('investigation timeline') || text.includes('deviation escalation')) &&
       (text.includes('as soon as feasible') || text.includes('operational constraint') || text.includes('verbal concurrence') || text.includes('expeditiously') || text.includes('no defined timeline'))
     ) {
+      const flaw = this.extractFlawedClause(section, [
+        'as soon as feasible',
+        'verbal concurrence',
+        'target dates may be extended',
+        'operational constraints',
+      ]);
+
       return {
         id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
         sectionRef: section.sectionNumber,
         sectionTitle: section.title,
+        startLine: flaw.startLine,
+        sopTextSnippet: flaw.snippet,
         riskLevel: 'HIGH',
         confidence: 87,
         issue: 'No defined timeline for deviation escalation',
@@ -176,10 +202,18 @@ export class RegulatoryReasoningEngine {
       (section.sectionNumber === '8.0' || text.includes('environmental monitoring alert') || text.includes('iso grade a particle')) &&
       (text.includes('operations may continue') || text.includes('alert excursion') || text.includes('5-day microbiological incubation'))
     ) {
+      const flaw = this.extractFlawedClause(section, [
+        'operations may continue',
+        'particle count alert excursion',
+        '5-day microbiological incubation',
+      ]);
+
       return {
         id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
         sectionRef: section.sectionNumber,
         sectionTitle: section.title,
+        startLine: flaw.startLine,
+        sopTextSnippet: flaw.snippet,
         riskLevel: 'HIGH',
         confidence: 84,
         issue: 'Allowing aseptic processing to continue during active ISO 5 particle count excursions',
@@ -205,10 +239,20 @@ export class RegulatoryReasoningEngine {
       const isSharedAdmin = text.includes('shared') || text.includes('system clocks');
       const isAuditOmission = text.includes('printouts is sufficient') || text.includes('conducted periodically');
 
+      const flaw = this.extractFlawedClause(section, [
+        'shared',
+        'generic',
+        'system clocks',
+        'printouts is sufficient',
+        'purged',
+      ]);
+
       return {
         id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
         sectionRef: section.sectionNumber,
         sectionTitle: section.title,
+        startLine: flaw.startLine,
+        sopTextSnippet: flaw.snippet,
         riskLevel: 'HIGH',
         confidence: isSharedAdmin ? 92 : 88,
         issue: isSharedAdmin
@@ -229,6 +273,51 @@ export class RegulatoryReasoningEngine {
     return null;
   }
 
+  private extractFlawedClause(
+    section: SOPSection,
+    targetPhrases: string[]
+  ): { snippet: string; startLine: number } {
+    const rawLines = section.content.split(/\r?\n/);
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+      if (!line) continue;
+      const lower = line.toLowerCase();
+      for (const phrase of targetPhrases) {
+        if (lower.includes(phrase.toLowerCase())) {
+          const sentences = line.split(/(?<=[.!?])\s+/);
+          for (const s of sentences) {
+            if (s.toLowerCase().includes(phrase.toLowerCase())) {
+              return {
+                snippet: s.trim(),
+                startLine: section.startLine + i + 1,
+              };
+            }
+          }
+          return {
+            snippet: line,
+            startLine: section.startLine + i + 1,
+          };
+        }
+      }
+    }
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+      if (line.length > 20) {
+        return {
+          snippet: line,
+          startLine: section.startLine + i + 1,
+        };
+      }
+    }
+
+    return {
+      snippet: section.content.slice(0, 200),
+      startLine: section.startLine,
+    };
+  }
+
   private formatPrecedentRef(precedent: PrecedentFlag, score: number): MatchedPrecedentRef {
     return {
       id: precedent.id,
@@ -237,6 +326,7 @@ export class RegulatoryReasoningEngine {
       dateIssued: precedent.date_issued,
       excerpt: precedent.excerpt,
       cfrCitation: precedent.cfr_citation,
+      category: precedent.category,
       remediationGuidance: precedent.remediation_guidance,
       similarityScore: Math.round(score * 100) / 100,
     };
@@ -250,8 +340,9 @@ Evaluate this SOP section against the matched FDA precedent citation:
 ${section.content}
 
 [MATCHED FDA PRECEDENT]
-Citation: ${retrieval.precedent.cfr_citation}
+Citation: ${retrieval.precedent.cfr_citation} (${retrieval.precedent.category})
 Source: ${retrieval.precedent.source} (${retrieval.precedent.company_redacted})
+Date Issued: ${retrieval.precedent.date_issued}
 FDA Observation Excerpt: "${retrieval.precedent.excerpt}"
 
 Does this SOP section contain a cGMP compliance risk or ambiguous regulatory language?
@@ -260,6 +351,7 @@ Respond in JSON format:
   "isRisk": boolean,
   "riskLevel": "HIGH" | "MEDIUM" | "LOW",
   "confidence": number,
+  "flawedSopSnippet": "The exact verbatim sentence or clause quoted from the SOP section that contains the flaw",
   "issue": "Concise 1-sentence issue summary",
   "regulation": "Applicable 21 CFR section",
   "detailedReasoning": "2-3 sentences explaining the risk",
@@ -287,10 +379,14 @@ Respond in JSON format:
 
     if (!parsed.isRisk) return null;
 
+    const flaw = this.extractFlawedClause(section, [parsed.flawedSopSnippet || '']);
+
     return {
       id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
       sectionRef: section.sectionNumber,
       sectionTitle: section.title,
+      startLine: flaw.startLine,
+      sopTextSnippet: parsed.flawedSopSnippet || flaw.snippet,
       riskLevel: parsed.riskLevel,
       confidence: parsed.confidence,
       issue: parsed.issue,
@@ -308,10 +404,12 @@ Evaluate this SOP section against the matched FDA precedent:
 [SOP SECTION ${section.sectionNumber}: ${section.title}]
 ${section.content}
 [FDA PRECEDENT]
-Citation: ${retrieval.precedent.cfr_citation}
+Citation: ${retrieval.precedent.cfr_citation} (${retrieval.precedent.category})
+Source: ${retrieval.precedent.source} (${retrieval.precedent.company_redacted})
+Date Issued: ${retrieval.precedent.date_issued}
 Excerpt: "${retrieval.precedent.excerpt}"
 
-Respond in JSON: {"isRisk": boolean, "riskLevel": "HIGH"|"MEDIUM"|"LOW", "confidence": number, "issue": string, "regulation": string, "detailedReasoning": string, "remediation": string}`;
+Respond in JSON: {"isRisk": boolean, "riskLevel": "HIGH"|"MEDIUM"|"LOW", "confidence": number, "flawedSopSnippet": string, "issue": string, "regulation": string, "detailedReasoning": string, "remediation": string}`;
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -332,10 +430,14 @@ Respond in JSON: {"isRisk": boolean, "riskLevel": "HIGH"|"MEDIUM"|"LOW", "confid
 
     if (!parsed.isRisk) return null;
 
+    const flaw = this.extractFlawedClause(section, [parsed.flawedSopSnippet || '']);
+
     return {
       id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,
       sectionRef: section.sectionNumber,
       sectionTitle: section.title,
+      startLine: flaw.startLine,
+      sopTextSnippet: parsed.flawedSopSnippet || flaw.snippet,
       riskLevel: parsed.riskLevel,
       confidence: parsed.confidence,
       issue: parsed.issue,

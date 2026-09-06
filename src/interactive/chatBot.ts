@@ -398,23 +398,28 @@ export class ComplianceChatBot {
         chalk.white(aiSynthesis),
         '',
         chalk.gray('─'.repeat(64)),
-        chalk.bold.white('Matched FDA Statutory Precedent & Citation:'),
-        `${chalk.gray('CFR Citation:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
-        `${chalk.gray('Enforcement:')} ${chalk.white(top.source)} — ${chalk.italic.gray(`"${top.excerpt.slice(0, 180)}..."`)}`,
-        `${chalk.gray('Remediation:')} ${chalk.greenBright(top.remediation_guidance)}`
+        chalk.bold.white('Cited Historical FDA Precedent (Past Enforcement Data):'),
+        `${chalk.gray('Statutory Authority:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
+        `${chalk.gray('Historical Citation:')} ${chalk.yellow.bold(top.source)}`,
+        `${chalk.gray('Facility & Date:')} ${chalk.dim(top.company_redacted)} ${chalk.dim(`(Issued: ${top.date_issued})`)}`,
+        chalk.gray('Prior Enforcement Excerpt:'),
+        chalk.dim.italic(`  "${top.excerpt.slice(0, 220)}..."`),
+        `${chalk.gray('Precedent Remediation:')} ${chalk.greenBright(top.remediation_guidance)}`
       );
     } else {
       answerLines.push(
-        chalk.bold.cyan('FDA Regulatory Guidance & Precedent Rationale'),
+        chalk.bold.cyan('FDA Regulatory Guidance & Historical Precedent Analysis'),
         `${chalk.gray('Applicable Statute:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
         `${chalk.gray('Regulatory Severity:')} ${top.severity === 'HIGH' ? chalk.red.bold('HIGH RISK (Warning Letter / Class I Recall)') : chalk.yellow.bold('MEDIUM RISK (483 Observation / Class II)')}`,
         '',
         chalk.bold.white('Precedent Finding:'),
         chalk.white(`  ${top.issue_summary}`),
         '',
-        chalk.bold.white('Historical FDA Citation Excerpt:'),
-        chalk.italic.gray(`  "${top.excerpt.slice(0, 240)}..."`),
-        chalk.dim(`  — ${top.source} (${top.company_redacted})`),
+        chalk.bold.white('Cited Historical FDA Enforcement Action (Past Data):'),
+        `  ${chalk.gray('Citation:')} ${chalk.yellow.bold(top.source)}`,
+        `  ${chalk.gray('Facility:')} ${chalk.dim(top.company_redacted)}  |  ${chalk.gray('Date Issued:')} ${chalk.dim(top.date_issued)}`,
+        chalk.gray('  Historical Excerpt:'),
+        chalk.italic.gray(`    "${top.excerpt.slice(0, 240)}..."`),
         '',
         chalk.bold.white('Auditor Remediation & Industry Standard:'),
         chalk.greenBright(`  ${top.remediation_guidance}`)
@@ -424,8 +429,8 @@ export class ComplianceChatBot {
     if (top2 && top2.id !== top.id) {
       answerLines.push(
         '',
-        chalk.gray('Related Precedent:'),
-        chalk.dim(`  • ${top2.source}: ${top2.issue_summary.slice(0, 90)}...`)
+        chalk.gray('Related Historical Precedent:'),
+        chalk.dim(`  • ${top2.source} (${top2.date_issued}): ${top2.issue_summary.slice(0, 90)}...`)
       );
     }
 

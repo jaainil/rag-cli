@@ -52,30 +52,57 @@ export class ReportRenderer {
     const badge = this.formatRiskBadge(flag.riskLevel);
     const confidenceColor =
       flag.confidence >= 80 ? chalk.green : flag.confidence >= 60 ? chalk.yellow : chalk.gray;
+    const lineLabel = flag.startLine ? chalk.yellow.bold(` [Line ${flag.startLine}]`) : '';
 
     console.log(
-      `${badge} ${chalk.bold.white(`Section ${flag.sectionRef}`)} — ${chalk.white(flag.sectionTitle)}`
+      `${badge} ${chalk.bold.white(`Section ${flag.sectionRef}`)} — ${chalk.white.bold(flag.sectionTitle)}${lineLabel}`
     );
-    console.log(`  ${chalk.gray('Issue:')} ${chalk.bold(flag.issue)}`);
-    if (flag.regulation) {
-      console.log(`  ${chalk.gray('Regulation:')} ${chalk.magenta(flag.regulation)}`);
+
+    // 1. Where the flaw is in the current SOP (with exact text)
+    if (flag.sopTextSnippet) {
+      console.log(chalk.bold.cyan('  ▶ Current SOP Flawed Text:'));
+      const sopLines = flag.sopTextSnippet.match(/.{1,72}(\s|$)/g) || [flag.sopTextSnippet];
+      sopLines.forEach((line, idx) => {
+        const prefix = idx === 0 ? '    "' : '     ';
+        const suffix = idx === sopLines.length - 1 ? '"' : '';
+        console.log(chalk.italic.yellowBright(`${prefix}${line.trim()}${suffix}`));
+      });
     }
+
+    // 2. Compliance Defect & Statutory Regulation
+    console.log(`  ${chalk.gray('Compliance Defect:')} ${chalk.bold.redBright(flag.issue)}`);
+    if (flag.regulation) {
+      console.log(`  ${chalk.gray('Statutory Regulation:')} ${chalk.magenta.bold(flag.regulation)}`);
+    }
+
+    // 3. Historical Precedent & Past Enforcement Data Citation
+    console.log(chalk.bold.cyan('  ▶ Cited Historical FDA Precedent (Past Enforcement Data):'));
     console.log(
-      `  ${chalk.gray('Matched precedent:')} ${chalk.yellow(flag.matchedPrecedent.source)} (${chalk.dim(flag.matchedPrecedent.companyRedacted)})`
+      `    ${chalk.gray('Citation:')} ${chalk.yellow.bold(flag.matchedPrecedent.source)}`
+    );
+    const dateStr = flag.matchedPrecedent.dateIssued ? ` | Issued: ${flag.matchedPrecedent.dateIssued}` : '';
+    console.log(
+      `    ${chalk.gray('Target Facility:')} ${chalk.dim(flag.matchedPrecedent.companyRedacted)}${chalk.dim(dateStr)}`
     );
 
-    // Indented quote excerpt
+    console.log(chalk.gray('    Past Historical Enforcement Excerpt:'));
     const excerptLines = flag.matchedPrecedent.excerpt.match(/.{1,70}(\s|$)/g) || [
       flag.matchedPrecedent.excerpt,
     ];
-    console.log(chalk.dim('    "' + excerptLines[0]?.trim()));
-    if (excerptLines[1]) {
-      console.log(chalk.dim('     ' + excerptLines[1]?.trim() + '..."'));
-    } else {
-      console.log(chalk.dim('    "'));
+    excerptLines.slice(0, 3).forEach((line, idx) => {
+      const prefix = idx === 0 ? '      "' : '       ';
+      const suffix = idx === Math.min(2, excerptLines.length - 1) ? '..."' : '';
+      console.log(chalk.dim.italic(`${prefix}${line.trim()}${suffix}`));
+    });
+
+    if (flag.remediationRecommendation) {
+      const remPreview = flag.remediationRecommendation.length > 140
+        ? `${flag.remediationRecommendation.slice(0, 140)}...`
+        : flag.remediationRecommendation;
+      console.log(`    ${chalk.gray('Precedent Remediation Standard:')} ${chalk.greenBright(remPreview)}`);
     }
 
-    console.log(`  ${chalk.gray('Confidence:')} ${confidenceColor.bold(`${flag.confidence}%`)}`);
+    console.log(`  ${chalk.gray('Auditor Confidence:')} ${confidenceColor.bold(`${flag.confidence}%`)}`);
     console.log('');
   }
 
@@ -100,8 +127,14 @@ export class ReportRenderer {
     console.log(chalk.bold.underline('1. PRIMARY COMPLIANCE DEFECT'));
     console.log(`   ${chalk.red.bold(flag.issue)}\n`);
 
-    if (sectionContent) {
-      console.log(chalk.bold.underline('2. AUDITED SOP CLAUSE'));
+    const lineSuffix = flag.startLine ? ` (Line ${flag.startLine})` : '';
+    console.log(chalk.bold.underline(`2. WHERE FLAW OCCURS IN CURRENT SOP${lineSuffix}`));
+    if (flag.sopTextSnippet) {
+      console.log(chalk.bold.yellow('   Audited SOP Flawed Clause:'));
+      console.log(chalk.italic.yellowBright(`   "${flag.sopTextSnippet.trim()}"\n`));
+    }
+    if (sectionContent && sectionContent.trim() !== flag.sopTextSnippet?.trim()) {
+      console.log(chalk.bold.gray('   Full Section Context:'));
       console.log(chalk.italic.gray(`   "${sectionContent.trim()}"\n`));
     }
 
@@ -110,15 +143,18 @@ export class ReportRenderer {
     reasoningLines.forEach((line) => console.log(`   ${chalk.white(line.trim())}`));
     console.log('');
 
-    console.log(chalk.bold.underline('4. HISTORICAL FDA PRECEDENT MATCH'));
+    console.log(chalk.bold.underline('4. HISTORICAL FDA PRECEDENT CITATION (PAST DATA)'));
     console.log(`   ${chalk.yellow.bold(flag.matchedPrecedent.source)}`);
-    console.log(`   ${chalk.dim(`Facility / Date: ${flag.matchedPrecedent.companyRedacted} (${flag.matchedPrecedent.dateIssued})`)}`);
-    console.log(`   ${chalk.gray('FDA Observation Excerpt:')}`);
+    console.log(`   ${chalk.dim(`Facility / Enforcement Date: ${flag.matchedPrecedent.companyRedacted} (${flag.matchedPrecedent.dateIssued})`)}`);
+    if (flag.matchedPrecedent.category) {
+      console.log(`   ${chalk.gray(`Regulatory Domain: ${flag.matchedPrecedent.category}`)}`);
+    }
+    console.log(`   ${chalk.gray('Past Historical FDA Observation Excerpt:')}`);
     const quoteLines = flag.matchedPrecedent.excerpt.match(/.{1,74}(\s|$)/g) || [flag.matchedPrecedent.excerpt];
     quoteLines.forEach((q) => console.log(`     ${chalk.dim.italic(`"${q.trim()}"`)}`));
     console.log('');
 
-    console.log(chalk.bold.underline('5. REMEDIATION RECOMMENDATION (AUDIT-READY CLAUSE)'));
+    console.log(chalk.bold.underline('5. REMEDIATION RECOMMENDATION (AUDIT-READY REPLACEMENT CLAUSE)'));
     const remBox = chalk.greenBright(flag.remediationRecommendation);
     console.log(
       boxen(remBox, {
