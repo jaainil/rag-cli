@@ -4,6 +4,8 @@ import boxen from 'boxen';
 import path from 'path';
 import fs from 'fs';
 import { DatabaseManager } from '../db/sqlite';
+import { PostgresManager } from '../db/postgres';
+import { DragonflyCacheManager } from '../cache/dragonfly';
 import { seedDatabase } from '../db/seedRunner';
 import { handleScan } from '../commands/scan';
 import { handleExplain } from '../commands/explain';
@@ -15,21 +17,41 @@ import { ScanReport } from '../types';
 
 export class ComplianceChatBot {
   private db: DatabaseManager;
+  private pg: PostgresManager;
+  private cache: DragonflyCacheManager;
   private configManager: ConfigManager;
   private lastReport: ScanReport | null = null;
   private activeSopPath: string | null = null;
   private isRunning: boolean = false;
+  private isPgConnected: boolean = false;
+  private isCacheConnected: boolean = false;
 
   constructor() {
     this.db = new DatabaseManager();
     seedDatabase(this.db);
+    this.pg = new PostgresManager();
+    this.cache = new DragonflyCacheManager();
     this.configManager = new ConfigManager();
     this.lastReport = this.db.getLatestScanReport();
   }
 
   public async start(): Promise<void> {
     this.isRunning = true;
-    this.renderWelcomeBanner();
+
+    try {
+      this.isCacheConnected = await this.cache.connect();
+    } catch {
+      this.isCacheConnected = false;
+    }
+
+    try {
+      const count = await this.pg.getPrecedentCount();
+      this.isPgConnected = count > 0;
+    } catch {
+      this.isPgConnected = false;
+    }
+
+    await this.renderWelcomeBanner();
 
     const rl = readline.createInterface({
       input: process.stdin,
@@ -61,11 +83,12 @@ export class ComplianceChatBot {
 
     rl.on('close', () => {
       this.isRunning = false;
+      this.cache.disconnect();
       console.log(chalk.yellow('\nExiting Compliance CLI. Goodbye!\n'));
     });
   }
 
-  private renderWelcomeBanner(): void {
+  private async renderWelcomeBanner(): Promise<void> {
     if (process.stdout.isTTY) {
       console.clear();
     }
@@ -82,11 +105,27 @@ export class ComplianceChatBot {
     console.log(banner);
 
     const config = this.configManager.getConfig();
-    const count = this.db.getPrecedentCount();
+    let count = this.db.getPrecedentCount();
+    if (this.isPgConnected) {
+      try {
+        count = await this.pg.getPrecedentCount();
+      } catch {
+        // use sqlite count
+      }
+    }
+
+    const dbStatus = this.isPgConnected
+      ? chalk.green('PostgreSQL 18 (pgvector) [Connected]')
+      : chalk.yellow('SQLite Local');
+
+    const cacheStatus = this.isCacheConnected
+      ? chalk.green('Dragonfly Redis [Active]')
+      : chalk.dim('Memory / Disabled');
 
     const statusCard = [
       `${chalk.bold.white('Interactive Compliance Chatbot')}  ${chalk.dim('(OpenCode style)')}`,
-      `${chalk.green('●')} ${chalk.gray('Engine:')} ${chalk.yellow(config.llmProvider.toUpperCase())}  |  ${chalk.gray('Knowledge Base:')} ${chalk.cyan(`${count} FDA Precedents`)}  |  ${chalk.gray('Storage:')} ${chalk.dim('SQLite Local')}`,
+      `${chalk.green('●')} ${chalk.gray('Database:')} ${dbStatus}  |  ${chalk.gray('Cache:')} ${cacheStatus}`,
+      `${chalk.green('●')} ${chalk.gray('Knowledge Base:')} ${chalk.cyan.bold(`${count} FDA Precedents`)}  |  ${chalk.gray('Reasoning:')} ${chalk.yellow(config.llmProvider.toUpperCase())}`,
       this.lastReport
         ? `${chalk.gray('Active SOP:')} ${chalk.white.bold(this.lastReport.filename)} (${this.lastReport.flagCount} flags logged)`
         : `${chalk.gray('Active SOP:')} ${chalk.dim('None (type /scan <file> or drop an SOP to begin)')}`,
@@ -116,7 +155,6 @@ export class ComplianceChatBot {
   private async handleInput(input: string, rl: readline.Interface): Promise<void> {
     const trimmed = input.trim();
 
-    // 1. Slash commands
     if (trimmed.startsWith('/')) {
       await this.handleSlashCommand(trimmed, rl);
       return;
@@ -124,14 +162,13 @@ export class ComplianceChatBot {
 
     const lower = trimmed.toLowerCase();
 
-    // 2. Natural language intent routing
     if (lower === 'exit' || lower === 'quit' || lower === 'q') {
       rl.close();
       return;
     }
 
     if (lower === 'clear' || lower === 'cls') {
-      this.renderWelcomeBanner();
+      await this.renderWelcomeBanner();
       return;
     }
 
@@ -140,7 +177,7 @@ export class ComplianceChatBot {
       return;
     }
 
-    // Natural scan trigger: e.g. "scan sample_sops/sop_deviation_handling.md" or "check sop_deviation_handling.md"
+    // Natural scan trigger
     if (lower.startsWith('scan ') || lower.startsWith('check ') || lower.startsWith('audit ')) {
       const parts = trimmed.split(/\s+/);
       if (parts[1]) {
@@ -149,7 +186,7 @@ export class ComplianceChatBot {
       }
     }
 
-    // Natural explain trigger: e.g. "explain 4.2" or "explain section 4.2"
+    // Natural explain trigger
     if (lower.startsWith('explain ') || lower.includes('why was section ') || lower.includes('why is section ')) {
       const match = trimmed.match(/(?:explain|section)\s+([0-9]+(?:\.[0-9]+)*)/i);
       if (match && match[1]) {
@@ -158,14 +195,14 @@ export class ComplianceChatBot {
       }
     }
 
-    // Natural export trigger: e.g. "export report to json", "save as csv"
+    // Natural export trigger
     if (lower.startsWith('export') || lower.startsWith('save report')) {
       const format = lower.includes('csv') ? 'csv' : lower.includes('html') ? 'html' : 'json';
       handleExport({ format });
       return;
     }
 
-    // Natural review trigger: e.g. "accept 4.2", "reject 6.1"
+    // Natural review trigger
     if (lower.startsWith('accept ') || lower.startsWith('reject ')) {
       const parts = trimmed.split(/\s+/);
       const isAccept = parts[0].toLowerCase() === 'accept';
@@ -176,7 +213,7 @@ export class ComplianceChatBot {
       }
     }
 
-    // 3. Conversational Regulatory Expert Q&A against FDA Precedents!
+    // Conversational Regulatory Expert Q&A against PostgreSQL pgvector + Dragonfly cache
     await this.answerRegulatoryQuestion(trimmed);
   }
 
@@ -190,7 +227,7 @@ export class ComplianceChatBot {
         break;
 
       case '/clear':
-        this.renderWelcomeBanner();
+        await this.renderWelcomeBanner();
         break;
 
       case '/help':
@@ -259,10 +296,23 @@ export class ComplianceChatBot {
   }
 
   private async answerRegulatoryQuestion(question: string): Promise<void> {
-    const precedents = this.db.getAllPrecedents();
-    const retriever = new HybridRetriever(precedents);
+    let precedents = this.db.getAllPrecedents();
+    if (this.isPgConnected) {
+      try {
+        precedents = await this.pg.getAllPrecedents();
+      } catch {
+        // fallback
+      }
+    }
 
-    console.log(chalk.dim('\nSearching FDA Warning Letters, 483 Observations, and 21 CFR guidelines...'));
+    const retriever = new HybridRetriever(
+      precedents,
+      undefined,
+      this.isPgConnected ? this.pg : undefined,
+      this.cache
+    );
+
+    console.log(chalk.dim('\nSearching FDA Warning Letters, 483 Observations, and 21 CFR guidelines (pgvector + Dragonfly cache)...'));
 
     const pseudoSection = {
       sectionNumber: 'QUERY',
@@ -286,7 +336,7 @@ export class ComplianceChatBot {
     const answerBox = [
       `${chalk.bold.cyan('FDA Regulatory Guidance & Precedent Rationale')}`,
       `${chalk.gray('Applicable Statute:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
-      `${chalk.gray('Regulatory Severity:')} ${top.severity === 'HIGH' ? chalk.red.bold('HIGH RISK (Warning Letter Precedent)') : chalk.yellow.bold('MEDIUM RISK (483 Observation)')}`,
+      `${chalk.gray('Regulatory Severity:')} ${top.severity === 'HIGH' ? chalk.red.bold('HIGH RISK (Warning Letter / Class I Recall)') : chalk.yellow.bold('MEDIUM RISK (483 Observation / Class II)')}`,
       '',
       chalk.bold.white('Precedent Finding:'),
       chalk.white(`  ${top.issue_summary}`),

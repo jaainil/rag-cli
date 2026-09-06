@@ -1,49 +1,56 @@
 import crypto from 'crypto';
+import { DragonflyCacheManager } from '../cache/dragonfly';
 
 export class EmbeddingEngine {
   private dimension: number = 128;
   private apiKey?: string;
+  private cache: DragonflyCacheManager;
 
-  constructor(apiKey?: string) {
+  constructor(apiKey?: string, cache?: DragonflyCacheManager) {
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || process.env.VOYAGE_API_KEY;
+    this.cache = cache || new DragonflyCacheManager();
   }
 
   /**
-   * Generates a normalized dense vector for the given text.
-   * If an API key is provided, can query external embedding API.
-   * Otherwise, generates a deterministic semantic character n-gram + token projection vector.
+   * Generates a normalized dense vector for the given text with Dragonfly caching.
    */
   public async embed(text: string): Promise<number[]> {
-    if (this.apiKey && process.env.USE_REMOTE_EMBEDDINGS === 'true') {
-      try {
-        return await this.embedRemote(text);
-      } catch (err) {
-        // Fall back to local generator if remote call fails
-        return this.embedLocal(text);
-      }
+    // Check Dragonfly cache first
+    const cached = await this.cache.getCachedEmbedding(text);
+    if (cached && cached.length === this.dimension) {
+      return cached;
     }
 
-    return this.embedLocal(text);
+    let vector: number[];
+    if (this.apiKey && process.env.USE_REMOTE_EMBEDDINGS === 'true') {
+      try {
+        vector = await this.embedRemote(text);
+      } catch (err) {
+        vector = this.embedLocal(text);
+      }
+    } else {
+      vector = this.embedLocal(text);
+    }
+
+    // Cache in Dragonfly
+    await this.cache.setCachedEmbedding(text, vector);
+    return vector;
   }
 
   /**
    * Deterministic local embedding generator.
-   * Uses hashing trick across subword n-grams and domain vocabulary to project
-   * text into a unit-normalized dense float vector.
    */
   public embedLocal(text: string): number[] {
     const vector = new Array(this.dimension).fill(0);
     const normalized = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
     const tokens = normalized.split(/\s+/).filter(Boolean);
 
-    // 1. Token level features
     for (const token of tokens) {
       const hash = this.murmurHash(token);
       const index = Math.abs(hash) % this.dimension;
       const sign = hash % 2 === 0 ? 1 : -1;
       vector[index] += sign * 1.5;
 
-      // 2. Character n-grams (3-grams) for morphological capture
       if (token.length >= 3) {
         for (let j = 0; j <= token.length - 3; j++) {
           const gram = token.substring(j, j + 3);
@@ -54,7 +61,6 @@ export class EmbeddingEngine {
       }
     }
 
-    // 3. Unit normalize
     let norm = 0;
     for (let i = 0; i < this.dimension; i++) {
       norm += vector[i] * vector[i];
@@ -96,7 +102,7 @@ export class EmbeddingEngine {
     for (let i = 0; i < key.length; i++) {
       const char = key.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
+      hash |= 0;
     }
     return hash;
   }

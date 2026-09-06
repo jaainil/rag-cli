@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { Command } from 'commander';
 import { handleScan } from './commands/scan';
 import { handleExplain } from './commands/explain';

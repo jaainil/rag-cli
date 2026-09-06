@@ -3,6 +3,8 @@ import chalk from 'chalk';
 import path from 'path';
 import fs from 'fs';
 import { DatabaseManager } from '../db/sqlite';
+import { PostgresManager } from '../db/postgres';
+import { DragonflyCacheManager } from '../cache/dragonfly';
 import { seedDatabase } from '../db/seedRunner';
 import { parseDocument } from '../core/parser';
 import { extractSections } from '../core/chunker';
@@ -10,7 +12,7 @@ import { HybridRetriever } from '../core/hybridRetriever';
 import { RegulatoryReasoningEngine } from '../core/reasoningEngine';
 import { ReportRenderer } from '../core/reportRenderer';
 import { ConfigManager } from '../utils/configManager';
-import { ScanReport, FlaggedIssue } from '../types';
+import { ScanReport, FlaggedIssue, PrecedentFlag } from '../types';
 
 export async function handleScan(
   targetPath: string,
@@ -18,11 +20,29 @@ export async function handleScan(
 ): Promise<ScanReport> {
   const startTime = Date.now();
   const db = new DatabaseManager();
+  const pg = new PostgresManager();
+  const cache = new DragonflyCacheManager();
+  await cache.connect();
+
   const config = new ConfigManager().getConfig();
 
-  // Ensure knowledge base has 200+ precedents seeded
+  // Ensure local SQLite has baseline
   seedDatabase(db);
-  const precedents = db.getAllPrecedents();
+
+  // Check if PostgreSQL is accessible
+  let precedents: PrecedentFlag[] = [];
+  let isPgActive = false;
+  try {
+    const pgCount = await pg.getPrecedentCount();
+    if (pgCount > 0) {
+      precedents = await pg.getAllPrecedents();
+      isPgActive = true;
+    } else {
+      precedents = db.getAllPrecedents();
+    }
+  } catch {
+    precedents = db.getAllPrecedents();
+  }
 
   const resolved = path.resolve(targetPath);
   if (!fs.existsSync(resolved)) {
@@ -32,7 +52,7 @@ export async function handleScan(
 
   const stat = fs.statSync(resolved);
   if (stat.isDirectory()) {
-    return handleDirectoryScan(resolved, precedents, db, config);
+    return handleDirectoryScan(resolved, precedents, db, pg, cache, config);
   }
 
   // 1. Loading SOP
@@ -51,11 +71,12 @@ export async function handleScan(
   const sections = extractSections(parsedDoc.rawText);
   parseSpinner.succeed(`Parsing sections...                ${chalk.green(`${sections.length} sections found`)}`);
 
-  // 3. Embedding + retrieving matches
+  // 3. Embedding + retrieving matches with pgvector & Dragonfly
   const retrieveSpinner = ora({ text: 'Embedding + retrieving matches...', color: 'cyan' }).start();
-  const retriever = new HybridRetriever(precedents);
+  const retriever = new HybridRetriever(precedents, undefined, isPgActive ? pg : undefined, cache);
   const reasoningEngine = new RegulatoryReasoningEngine(config.llmProvider, config.anthropicApiKey || config.openaiApiKey);
-  retrieveSpinner.succeed(`Embedding + retrieving matches...  ${chalk.green('done')} (${precedents.length} FDA precedents indexed)`);
+  const dbLabel = isPgActive ? 'PostgreSQL 18 pgvector' : 'SQLite Local';
+  retrieveSpinner.succeed(`Embedding + retrieving matches...  ${chalk.green('done')} (${precedents.length} FDA precedents via ${dbLabel} + Dragonfly cache)`);
 
   // 4. Running risk analysis
   const analyzeSpinner = ora({ text: 'Running risk analysis...', color: 'cyan' }).start();
@@ -90,8 +111,18 @@ export async function handleScan(
     executionTimeMs: Date.now() - startTime,
   };
 
-  // Save to local SQLite audit store
+  // Save to PostgreSQL 18 & local SQLite audit stores
+  if (isPgActive) {
+    try {
+      await pg.saveScanReport(report);
+    } catch {
+      // Ignore
+    }
+  }
   db.saveScanReport(report);
+
+  // Invalidate cached stats
+  await cache.invalidateStats();
 
   // Render to terminal
   ReportRenderer.renderTerminalReport(report);
@@ -104,6 +135,13 @@ export async function handleScan(
     console.log(chalk.green(`  ✔ Report exported to: ${chalk.bold(out)}\n`));
   }
 
+  cache.disconnect();
+  try {
+    await pg.close();
+  } catch {
+    // Ignore
+  }
+
   return report;
 }
 
@@ -111,6 +149,8 @@ async function handleDirectoryScan(
   dirPath: string,
   precedents: any[],
   db: DatabaseManager,
+  pg: PostgresManager,
+  cache: DragonflyCacheManager,
   config: any
 ): Promise<ScanReport> {
   console.log(chalk.cyan(`Scanning directory: ${dirPath}\n`));

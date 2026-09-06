@@ -1,5 +1,7 @@
 import { PrecedentFlag, SOPSection } from '../types';
 import { EmbeddingEngine } from './embeddings';
+import { PostgresManager } from '../db/postgres';
+import { DragonflyCacheManager } from '../cache/dragonfly';
 
 export interface RetrievalResult {
   precedent: PrecedentFlag;
@@ -14,6 +16,8 @@ export class HybridRetriever {
   private precedents: PrecedentFlag[];
   private precedentVectors: Map<string, number[]> = new Map();
   private embeddingEngine: EmbeddingEngine;
+  private pgManager?: PostgresManager;
+  private cache: DragonflyCacheManager;
   private currentYear: number = 2026;
 
   // BM25 parameters
@@ -22,23 +26,27 @@ export class HybridRetriever {
   private avgDocLength: number = 0;
   private docFrequencies: Map<string, number> = new Map();
 
-  constructor(precedents: PrecedentFlag[], embeddingEngine?: EmbeddingEngine) {
+  constructor(
+    precedents: PrecedentFlag[],
+    embeddingEngine?: EmbeddingEngine,
+    pgManager?: PostgresManager,
+    cache?: DragonflyCacheManager
+  ) {
     this.precedents = precedents;
-    this.embeddingEngine = embeddingEngine || new EmbeddingEngine();
+    this.cache = cache || new DragonflyCacheManager();
+    this.embeddingEngine = embeddingEngine || new EmbeddingEngine(undefined, this.cache);
+    this.pgManager = pgManager;
     this.initIndices();
   }
 
   private initIndices(): void {
     let totalTerms = 0;
 
-    // 1. Calculate document frequencies for BM25 and build vectors
     for (const prec of this.precedents) {
-      // Build dense vector
       const textToEmbed = `${prec.category} ${prec.cfr_citation} ${prec.issue_summary} ${prec.excerpt} ${prec.keywords.join(' ')}`;
       const vec = this.embeddingEngine.embedLocal(textToEmbed);
       this.precedentVectors.set(prec.id, vec);
 
-      // BM25 term stats
       const tokens = this.tokenize(textToEmbed);
       totalTerms += tokens.length;
       const uniqueTokens = new Set(tokens);
@@ -86,11 +94,6 @@ export class HybridRetriever {
     return score;
   }
 
-  /**
-   * Recency decay:
-   * Newer precedents outrank older ones at equal similarity.
-   * e^-0.03 * age gives ~0.97 for 1-year-old, ~0.83 for 6-year-old, ~0.74 for 10-year-old.
-   */
   private calculateRecencyDecay(dateIssued: string): number {
     try {
       const year = parseInt(dateIssued.split('-')[0], 10);
@@ -103,16 +106,69 @@ export class HybridRetriever {
   }
 
   /**
-   * Hybrid retrieval for a given SOP section.
+   * Hybrid retrieval with PostgreSQL pgvector and Dragonfly caching.
    */
   public async retrieveMatches(section: SOPSection, topK: number = 3): Promise<RetrievalResult[]> {
     const queryText = `${section.title} ${section.content} ${section.keyEntities.join(' ')}`;
+    const cacheKey = `query:${queryText.slice(0, 100)}:${topK}`;
+
+    // 1. Check Dragonfly cache
+    const cached = await this.cache.getCachedQueryResult<RetrievalResult[]>(cacheKey);
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
+
     const queryTokens = this.tokenize(queryText);
     const queryVector = await this.embeddingEngine.embed(queryText);
 
-    const candidates: RetrievalResult[] = [];
+    // 2. Check if native pgvector is available
+    if (this.pgManager) {
+      try {
+        const pgResults = await this.pgManager.vectorSearch(queryVector, topK * 4);
+        if (pgResults && pgResults.length > 0) {
+          const candidates: RetrievalResult[] = [];
+          let maxBm25 = 0.0001;
+          const bm25Scores: number[] = [];
 
-    // Max BM25 normalization tracker
+          for (const item of pgResults) {
+            const itemText = `${item.category} ${item.cfr_citation} ${item.issue_summary} ${item.excerpt} ${(item.keywords || []).join(' ')}`;
+            const bScore = this.calculateBM25(queryTokens, itemText);
+            bm25Scores.push(bScore);
+            if (bScore > maxBm25) maxBm25 = bScore;
+          }
+
+          for (let i = 0; i < pgResults.length; i++) {
+            const item = pgResults[i];
+            const vScore = item.cosineSimilarity;
+            const normBm25 = Math.min(1.0, bm25Scores[i] / maxBm25);
+            const recency = this.calculateRecencyDecay(item.date_issued);
+            const feedback = item.feedback_score || 1.0;
+            const finalScore = (0.65 * vScore + 0.35 * normBm25) * recency * feedback;
+
+            candidates.push({
+              precedent: item,
+              finalScore,
+              vectorScore: vScore,
+              bm25Score: normBm25,
+              recencyFactor: recency,
+              feedbackMultiplier: feedback,
+            });
+          }
+
+          candidates.sort((a, b) => b.finalScore - a.finalScore);
+          const topMatches = candidates.slice(0, topK);
+
+          // Cache in Dragonfly
+          await this.cache.setCachedQueryResult(cacheKey, topMatches, 1800);
+          return topMatches;
+        }
+      } catch (err) {
+        // Fallback to in-memory/local if PG call errors
+      }
+    }
+
+    // 3. Fallback: Local Vector Cosine + BM25
+    const candidates: RetrievalResult[] = [];
     let maxBm25 = 0.0001;
     const bm25Scores: number[] = [];
 
@@ -128,13 +184,10 @@ export class HybridRetriever {
       const precVec = this.precedentVectors.get(prec.id) || [];
       const vScore = Math.max(0, EmbeddingEngine.cosineSimilarity(queryVector, precVec));
       const normBm25 = Math.min(1.0, bm25Scores[i] / maxBm25);
-
       const recency = this.calculateRecencyDecay(prec.date_issued);
       const feedback = prec.feedback_score ?? 1.0;
 
-      // Weighted score: 60% semantic vector + 40% BM25 lexical
-      const rawRelevance = 0.6 * vScore + 0.4 * normBm25;
-      const finalScore = rawRelevance * recency * feedback;
+      const finalScore = (0.6 * vScore + 0.4 * normBm25) * recency * feedback;
 
       candidates.push({
         precedent: prec,
@@ -146,8 +199,11 @@ export class HybridRetriever {
       });
     }
 
-    // Sort descending by finalScore
     candidates.sort((a, b) => b.finalScore - a.finalScore);
-    return candidates.slice(0, topK);
+    const topMatches = candidates.slice(0, topK);
+
+    // Cache in Dragonfly
+    await this.cache.setCachedQueryResult(cacheKey, topMatches, 1800);
+    return topMatches;
   }
 }
