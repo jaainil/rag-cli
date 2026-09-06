@@ -19,13 +19,15 @@ CLI (Node.js / TypeScript / Commander.js)
    │
    ├── Parser & Chunker → extracts sections from PDF / DOCX / Markdown / Text (with SHA-256)
    │
-   ├── Vector & Lexical Retriever → BM25 + dense cosine similarity + recency decay
+   ├── Cache Layer (Dragonfly Redis) → sub-millisecond embedding & query result caching
+   │
+   ├── Primary Vector DB (PostgreSQL 18 + pgvector) → HNSW vector similarity search
+   │
+   ├── Fallback Database (SQLite) → local on-prem redundancy
    │
    ├── Reasoning Engine → Claude 3.5 Sonnet / OpenAI + Offline Deterministic cGMP Rule Engine
    │
-   ├── SQLite Audit Store → persistent WAL database for scans, flags, and review feedback
-   │
-   └── Presentation Layer → high-contrast Boxen/Chalk UI + JSON / CSV / HTML export
+   └── Presentation Layer → OpenCode-style Interactive Chatbot + JSON / CSV / HTML export
 ```
 
 ---
