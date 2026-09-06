@@ -19,12 +19,14 @@ export class ConfigManager {
   private loadConfig(): AppConfig {
     const defaults: AppConfig = {
       llmProvider:
-        (process.env.LLM_PROVIDER as any) ||
-        (process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : 'ollama'),
+        (process.env.LLM_PROVIDER as any) || 'openrouter',
+      openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
       anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
       openaiApiKey: process.env.OPENAI_API_KEY || '',
       geminiApiKey: process.env.GEMINI_API_KEY || '',
-      modelName: process.env.OLLAMA_MODEL || 'ornith-1.5:9b',
+      modelName: process.env.OPENROUTER_MODEL || 'meta/muse-spark-1.3-contributor',
+      embeddingModel: process.env.OPENROUTER_EMBED_MODEL || 'openai/text-embedding-3-small',
+      rerankModel: process.env.OPENROUTER_RERANK_MODEL || 'voyageai/rerank-2.5',
       similarityThreshold: 0.6,
       vectorEngine: process.env.DATABASE_URL ? 'pgvector' : 'sqlite-local',
     };

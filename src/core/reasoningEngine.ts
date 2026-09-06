@@ -1,24 +1,29 @@
 import { SOPSection, PrecedentFlag, FlaggedIssue, RiskLevel, MatchedPrecedentRef } from '../types';
 import { RetrievalResult } from './hybridRetriever';
-import { OllamaClient } from './ollamaClient';
+import { OpenRouterClient } from './openRouterClient';
 
 export class RegulatoryReasoningEngine {
   private apiKey?: string;
-  private provider: 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'offline';
-  private ollama: OllamaClient;
-  private deepThinking: boolean = false;
+  private provider: 'openrouter' | 'anthropic' | 'openai' | 'gemini' | 'offline';
+  private openRouter: OpenRouterClient;
+  private deepThinking: boolean = true;
 
   constructor(
-    provider?: 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'offline',
+    provider?: 'openrouter' | 'anthropic' | 'openai' | 'gemini' | 'offline',
     apiKey?: string,
-    deepThinking: boolean = false
+    deepThinking: boolean = true
   ) {
     this.provider =
       provider ||
       (process.env.LLM_PROVIDER as any) ||
-      (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'ollama');
-    this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
-    this.ollama = new OllamaClient();
+      'openrouter';
+    this.apiKey =
+      apiKey ||
+      process.env.OPENROUTER_API_KEY ||
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.GEMINI_API_KEY;
+    this.openRouter = new OpenRouterClient(this.apiKey);
     this.deepThinking = deepThinking;
   }
 
@@ -37,12 +42,12 @@ export class RegulatoryReasoningEngine {
 
     const topMatch = retrievals[0];
 
-    // 1. Try Ollama local AI (ornith-1.5:9b or gemma4:latest for deep thinking)
-    if (this.provider === 'ollama') {
+    // 1. Cloud AI with meta/muse-spark-1.3-contributor via OpenRouter (deep thinking enabled)
+    if (this.provider === 'openrouter') {
       try {
-        const isAvailable = await this.ollama.isAvailable();
+        const isAvailable = await this.openRouter.isAvailable();
         if (isAvailable) {
-          const result = await this.ollama.analyzeSection(
+          const result = await this.openRouter.analyzeSection(
             section,
             topMatch.precedent,
             this.deepThinking

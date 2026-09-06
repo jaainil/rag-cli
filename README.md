@@ -87,7 +87,33 @@ compliance-check scan sample_sops/
 compliance-check scan sample_sops/sop_deviation_handling.md --export json --output my_report.json
 ```
 
-### 4.2 Explain a Flagged Finding
+### 4.2 U.S. Pharma Export — Pre-Shipment 10-Gate Master Audit (`preshipment`)
+Beyond checking SOPs, exporting drugs from India to the U.S. requires verifying that the shipment is **fully compliant and defensible** across 10 critical regulatory gates:
+
+```bash
+# Run 10-gate audit on pre-shipment dossier/manifest
+compliance-check preshipment sample_shipments/atorvastatin_tablets_export_pass.json
+
+# Audit failing shipment and inspect hard-stop triggers
+compliance-check preshipment sample_shipments/amoxicillin_capsules_export_fail.json
+
+# Export official U.S. Customs Regulatory Defense Dossier (HTML, CSV, JSON)
+compliance-check preshipment sample_shipments/atorvastatin_tablets_export_pass.json --export html
+```
+
+The 10 Gates evaluated:
+1. **Manufacturer / Facility:** FDA registration current, renewed, listed in DECRS, US Agent valid.
+2. **Product:** Legally importable SKU, strength, dosage form, active ingredients, intended use.
+3. **FDA Drug Listing:** Registered in FDA eList / SPL, NDC directory match, corresponds to foreign manufacturer.
+4. **FDA Approval / Regulatory Pathway (HARD STOP):** Verified NDA, ANDA, BLA, OTC Monograph, or API DMF.
+5. **cGMP Manufacturing Controls:** 21 CFR 210/211, completed BMR/BPR, 0 unresolved deviations, 0 unresolved OOS.
+6. **Batch Release (QA MUST SIGN OFF):** Analytical COA, testing passed, independent QA Unit release sign-off.
+7. **Labeling (VERY HIGH RISK):** Physical container label inspected, 21 CFR 201 compliant, 0 unauthorized claims.
+8. **Import Alert / Enforcement Check:** Queried FDA Import Alert database (DWPE 66-40, 99-32) & Debarment List.
+9. **Shipping & Customs Documentation:** Commercial invoice, AWB, HTS code, FDA Product Code, Affirmations of Compliance (REG, DLS, AND/NDA).
+10. **Final "DO NOT SHIP" Hard Stop Gate:** Automatic enforcement matrix; halts dispatch if ANY hard stop is triggered.
+
+### 4.3 Explain a Flagged Finding
 ```bash
 # View deep statutory analysis and audit remediation for Section 4.2
 compliance-check explain 4.2

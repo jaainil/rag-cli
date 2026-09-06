@@ -1,19 +1,16 @@
-import crypto from 'crypto';
 import { DragonflyCacheManager } from '../cache/dragonfly';
-import { OllamaClient } from './ollamaClient';
+import { OpenRouterClient } from './openRouterClient';
 
 export class EmbeddingEngine {
-  private dimension: number = 1024;
+  private dimension: number = 1536;
   private apiKey?: string;
   private cache: DragonflyCacheManager;
-  private ollama: OllamaClient;
-  private useOllama: boolean = true;
+  private openRouter: OpenRouterClient;
 
   constructor(apiKey?: string, cache?: DragonflyCacheManager) {
-    this.apiKey = apiKey || process.env.OPENAI_API_KEY || process.env.VOYAGE_API_KEY;
+    this.apiKey = apiKey || process.env.OPENROUTER_API_KEY;
     this.cache = cache || new DragonflyCacheManager();
-    this.ollama = new OllamaClient(this.cache);
-    this.useOllama = process.env.LLM_PROVIDER === 'ollama' || !this.apiKey;
+    this.openRouter = new OpenRouterClient(this.apiKey, this.cache);
   }
 
   public getDimension(): number {
@@ -21,7 +18,8 @@ export class EmbeddingEngine {
   }
 
   /**
-   * Generates a normalized dense vector for the given text with Dragonfly caching.
+   * Generates a normalized dense vector using openai/text-embedding-3-small via OpenRouter.
+   * Leverages Dragonfly Redis for sub-millisecond repeated retrieval.
    */
   public async embed(text: string): Promise<number[]> {
     // 1. Check Dragonfly cache first
@@ -32,31 +30,18 @@ export class EmbeddingEngine {
 
     let vector: number[];
 
-    // 2. Try Ollama local embedding (qwen3-embedding:8b)
-    if (this.useOllama) {
-      try {
-        vector = await this.ollama.embed(text);
-        if (vector && vector.length === this.dimension) {
-          await this.cache.setCachedEmbedding(text, vector);
-          return vector;
-        }
-      } catch {
-        // Fallback to local deterministic generator
+    // 2. OpenRouter cloud embeddings (openai/text-embedding-3-small)
+    try {
+      vector = await this.openRouter.embed(text);
+      if (vector && vector.length === this.dimension) {
+        await this.cache.setCachedEmbedding(text, vector);
+        return vector;
       }
+    } catch {
+      // Fallback to local deterministic generator
     }
 
-    // 3. Fallback to remote API if configured
-    if (this.apiKey && process.env.USE_REMOTE_EMBEDDINGS === 'true') {
-      try {
-        vector = await this.embedRemote(text);
-      } catch (err) {
-        vector = this.embedLocal(text);
-      }
-    } else {
-      vector = this.embedLocal(text);
-    }
-
-    // Cache in Dragonfly
+    vector = this.embedLocal(text);
     await this.cache.setCachedEmbedding(text, vector);
     return vector;
   }

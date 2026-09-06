@@ -29,19 +29,20 @@ export async function handleScan(
   // Ensure local SQLite has baseline
   seedDatabase(db);
 
-  // Check if PostgreSQL is accessible
-  let precedents: PrecedentFlag[] = [];
+  // Check if PostgreSQL is accessible and use whichever has more precedents
+  const dbPrecedents = db.getAllPrecedents();
+  let precedents: PrecedentFlag[] = dbPrecedents;
   let isPgActive = false;
   try {
     const pgCount = await pg.getPrecedentCount();
-    if (pgCount > 0) {
+    if (pgCount >= dbPrecedents.length) {
       precedents = await pg.getAllPrecedents();
       isPgActive = true;
-    } else {
-      precedents = db.getAllPrecedents();
+    } else if (pgCount > 0) {
+      isPgActive = true;
     }
   } catch {
-    precedents = db.getAllPrecedents();
+    precedents = dbPrecedents;
   }
 
   const resolved = path.resolve(targetPath);
@@ -77,7 +78,7 @@ export async function handleScan(
   const isDeep = Boolean(options.deep);
   const reasoningEngine = new RegulatoryReasoningEngine(
     config.llmProvider,
-    config.anthropicApiKey || config.openaiApiKey,
+    config.openrouterApiKey || config.anthropicApiKey || config.openaiApiKey,
     isDeep
   );
   const dbLabel = isPgActive ? 'PostgreSQL 18 pgvector' : 'SQLite Local';
@@ -85,9 +86,9 @@ export async function handleScan(
 
   // 4. Running risk analysis
   const modelLabel = isDeep
-    ? 'gemma4:latest [Deep Thinking]'
-    : config.llmProvider === 'ollama'
-    ? 'ornith-1.5:9b [Local AI]'
+    ? 'meta/muse-spark-1.3-contributor [Deep Thinking]'
+    : config.llmProvider === 'openrouter'
+    ? 'meta/muse-spark-1.3-contributor [OpenRouter AI]'
     : config.llmProvider.toUpperCase();
   const analyzeSpinner = ora({ text: `Running risk analysis (${modelLabel})...`, color: 'cyan' }).start();
   const flags: FlaggedIssue[] = [];

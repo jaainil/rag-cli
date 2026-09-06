@@ -2,7 +2,7 @@ import { PrecedentFlag, SOPSection } from '../types';
 import { EmbeddingEngine } from './embeddings';
 import { PostgresManager } from '../db/postgres';
 import { DragonflyCacheManager } from '../cache/dragonfly';
-import { OllamaClient } from './ollamaClient';
+import { OpenRouterClient } from './openRouterClient';
 
 export interface RetrievalResult {
   precedent: PrecedentFlag;
@@ -20,7 +20,7 @@ export class HybridRetriever {
   private embeddingEngine: EmbeddingEngine;
   private pgManager?: PostgresManager;
   private cache: DragonflyCacheManager;
-  private ollama: OllamaClient;
+  private openRouter: OpenRouterClient;
   private currentYear: number = 2026;
 
   // BM25 parameters
@@ -39,7 +39,7 @@ export class HybridRetriever {
     this.cache = cache || new DragonflyCacheManager();
     this.embeddingEngine = embeddingEngine || new EmbeddingEngine(undefined, this.cache);
     this.pgManager = pgManager;
-    this.ollama = new OllamaClient(this.cache);
+    this.openRouter = new OpenRouterClient(undefined, this.cache);
     this.initIndices();
   }
 
@@ -110,7 +110,7 @@ export class HybridRetriever {
   }
 
   /**
-   * Hybrid retrieval with PostgreSQL pgvector, BM25, and Ollama cross-encoder re-ranking.
+   * Hybrid retrieval with PostgreSQL pgvector, BM25, and OpenRouter voyageai/rerank-2.5 re-ranking.
    */
   public async retrieveMatches(section: SOPSection, topK: number = 3): Promise<RetrievalResult[]> {
     const queryText = `${section.title} ${section.content} ${section.keyEntities.join(' ')}`;
@@ -201,14 +201,14 @@ export class HybridRetriever {
     candidates.sort((a, b) => b.finalScore - a.finalScore);
     const topCandidates = candidates.slice(0, Math.max(topK, 5));
 
-    // 4. Apply Ollama re-ranking with pdurugyan/qwen3-reranker-0.6b-q8_0:latest
+    // 4. Apply cloud re-ranking with voyageai/rerank-2.5 via OpenRouter
     try {
       const docsForRerank = topCandidates.map((c) => ({
         id: c.precedent.id,
-        text: `${c.precedent.issue_summary} ${c.precedent.excerpt.slice(0, 300)}`,
+        text: `${c.precedent.category}: ${c.precedent.cfr_citation} ${c.precedent.issue_summary} ${c.precedent.excerpt.slice(0, 300)}`,
       }));
 
-      const reranked = await this.ollama.rerank(section.content.slice(0, 500), docsForRerank);
+      const reranked = await this.openRouter.rerank(section.content.slice(0, 500), docsForRerank);
       const scoreMap = new Map(reranked.map((r) => [r.id, r.score]));
 
       for (const cand of topCandidates) {

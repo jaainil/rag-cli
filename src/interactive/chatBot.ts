@@ -10,9 +10,10 @@ import { seedDatabase } from '../db/seedRunner';
 import { handleScan } from '../commands/scan';
 import { handleExplain } from '../commands/explain';
 import { handleExport } from '../commands/export';
+import { handlePreShipment } from '../commands/preShipment';
 import { handleReview, handleDatasetStats, handleHistory } from '../commands/stubs';
 import { HybridRetriever } from '../core/hybridRetriever';
-import { OllamaClient } from '../core/ollamaClient';
+import { OpenRouterClient } from '../core/openRouterClient';
 import { ConfigManager } from '../utils/configManager';
 import { ScanReport } from '../types';
 
@@ -20,22 +21,22 @@ export class ComplianceChatBot {
   private db: DatabaseManager;
   private pg: PostgresManager;
   private cache: DragonflyCacheManager;
-  private ollama: OllamaClient;
+  private openRouter: OpenRouterClient;
   private configManager: ConfigManager;
   private lastReport: ScanReport | null = null;
   private activeSopPath: string | null = null;
   private isRunning: boolean = false;
   private isPgConnected: boolean = false;
   private isCacheConnected: boolean = false;
-  private isOllamaConnected: boolean = false;
-  private deepThinkingMode: boolean = false;
+  private isOpenRouterConnected: boolean = false;
+  private deepThinkingMode: boolean = true;
 
   constructor() {
     this.db = new DatabaseManager();
     seedDatabase(this.db);
     this.pg = new PostgresManager();
     this.cache = new DragonflyCacheManager();
-    this.ollama = new OllamaClient(this.cache);
+    this.openRouter = new OpenRouterClient(undefined, this.cache);
     this.configManager = new ConfigManager();
     this.lastReport = this.db.getLatestScanReport();
   }
@@ -57,9 +58,9 @@ export class ComplianceChatBot {
     }
 
     try {
-      this.isOllamaConnected = await this.ollama.isAvailable();
+      this.isOpenRouterConnected = await this.openRouter.isAvailable();
     } catch {
-      this.isOllamaConnected = false;
+      this.isOpenRouterConnected = false;
     }
 
     await this.renderWelcomeBanner();
@@ -132,24 +133,24 @@ export class ComplianceChatBot {
       ? chalk.green('Dragonfly Redis [Active]')
       : chalk.dim('Memory / Disabled');
 
-    const ollamaStatus = this.isOllamaConnected
-      ? chalk.green('Ollama Local AI [Online]')
+    const aiStatus = this.isOpenRouterConnected
+      ? chalk.green('OpenRouter Cloud AI [Online]')
       : chalk.yellow('Deterministic Rules Engine');
 
-    const aiModels = this.isOllamaConnected
-      ? `${chalk.cyan('ornith-1.5:9b')} (Auditor) & ${chalk.magenta('gemma4:latest')} (Deep Thinking)`
+    const aiModels = this.isOpenRouterConnected
+      ? `${chalk.cyan('meta/muse-spark-1.3-contributor')} (Deep Reasoning Auditor)`
       : chalk.dim('Deterministic cGMP Rules');
 
-    const embedModel = this.isOllamaConnected
-      ? `${chalk.cyan('qwen3-embedding:8b')} (1024-dim MRL) + ${chalk.cyan('qwen3-reranker-0.6b')}`
+    const embedModel = this.isOpenRouterConnected
+      ? `${chalk.cyan('openai/text-embedding-3-small')} (1536-dim) + ${chalk.cyan('voyageai/rerank-2.5')}`
       : chalk.dim('Keyword / BM25');
 
     const statusCard = [
       `${chalk.bold.white('Interactive Compliance Chatbot')}  ${chalk.dim('(OpenCode style)')}`,
       `${chalk.green('●')} ${chalk.gray('Database:')} ${dbStatus}  |  ${chalk.gray('Cache:')} ${cacheStatus}`,
-      `${chalk.green('●')} ${chalk.gray('Local AI:')} ${ollamaStatus}  |  ${chalk.gray('Auditor Models:')} ${aiModels}`,
+      `${chalk.green('●')} ${chalk.gray('Cloud AI:')} ${aiStatus}  |  ${chalk.gray('Auditor:')} ${aiModels}`,
       `${chalk.green('●')} ${chalk.gray('Retrieval:')} ${embedModel}  |  ${chalk.gray('Knowledge Base:')} ${chalk.cyan.bold(`${count} FDA Precedents`)}`,
-      `${chalk.green('●')} ${chalk.gray('Reasoning Mode:')} ${this.deepThinkingMode ? chalk.magenta.bold('DEEP THINKING (gemma4:latest)') : chalk.cyan('Standard Auditor (ornith-1.5:9b)')}`,
+      `${chalk.green('●')} ${chalk.gray('Reasoning Mode:')} ${this.deepThinkingMode ? chalk.magenta.bold('DEEP THINKING (meta/muse-spark-1.3-contributor)') : chalk.cyan('Fast Audit')}`,
       this.lastReport
         ? `${chalk.gray('Active SOP:')} ${chalk.white.bold(this.lastReport.filename)} (${this.lastReport.flagCount} flags logged)`
         : `${chalk.gray('Active SOP:')} ${chalk.dim('None (type /scan <file> or drop an SOP to begin)')}`,
@@ -166,7 +167,8 @@ export class ComplianceChatBot {
 
     console.log(chalk.gray('Type natural questions (e.g. ') + chalk.white('"What are FDA rules for cleaning hold times?"') + chalk.gray(') or slash commands:'));
     console.log(chalk.dim('  /scan <file> [--deep] Scan an SOP file (.pdf, .docx, .md, .txt)'));
-    console.log(chalk.dim('  /deep [question]      Deep chain-of-thought analysis using gemma4:latest'));
+    console.log(chalk.dim('  /preshipment <file>   U.S. export 10-gate master checklist audit (.json)'));
+    console.log(chalk.dim('  /deep [question]      Deep chain-of-thought analysis via meta/muse-spark-1.3-contributor'));
     console.log(chalk.dim('  /explain <sec>        Deep dive into a flagged section (e.g. /explain 4.2)'));
     console.log(chalk.dim('  /export [format]      Export report to json, csv, or html'));
     console.log(chalk.dim('  /review <flag>        Review a flag (--accept or --reject)'));
@@ -200,6 +202,23 @@ export class ComplianceChatBot {
     if (lower === 'help') {
       this.showHelp();
       return;
+    }
+
+    // Natural shipment check trigger
+    if (
+      lower.startsWith('shipment ') ||
+      lower.startsWith('preshipment ') ||
+      lower.includes('check shipment') ||
+      lower.includes('audit shipment') ||
+      lower.includes('pre-shipment') ||
+      lower.includes('export check')
+    ) {
+      const parts = trimmed.split(/\s+/);
+      const fileCandidate = parts.find((p) => p.endsWith('.json') || p.includes('/'));
+      if (fileCandidate) {
+        await handlePreShipment(fileCandidate);
+        return;
+      }
     }
 
     // Natural scan trigger
@@ -238,7 +257,7 @@ export class ComplianceChatBot {
       }
     }
 
-    // Conversational Regulatory Expert Q&A against PostgreSQL pgvector + Dragonfly cache + Local Ollama
+    // Conversational Regulatory Expert Q&A against PostgreSQL pgvector + Dragonfly cache + OpenRouter Cloud AI
     await this.answerRegulatoryQuestion(trimmed, this.deepThinkingMode);
   }
 
@@ -274,8 +293,8 @@ export class ComplianceChatBot {
         } else {
           this.deepThinkingMode = !this.deepThinkingMode;
           const statusStr = this.deepThinkingMode
-            ? chalk.magenta.bold('ENABLED (using gemma4:latest for deep chain-of-thought analysis)')
-            : chalk.cyan.bold('DISABLED (using ornith-1.5:9b for fast audit)');
+            ? chalk.magenta.bold('ENABLED (using meta/muse-spark-1.3-contributor deep chain-of-thought analysis)')
+            : chalk.cyan.bold('DISABLED (standard audit mode)');
           console.log(chalk.white(`\nDeep Thinking mode is now ${statusStr}\n`));
         }
         break;
@@ -308,6 +327,24 @@ export class ComplianceChatBot {
         handleExport({ format });
         break;
 
+      case '/preshipment':
+      case '/shipment':
+      case '/export-check':
+        if (!args[0]) {
+          console.log(chalk.yellow('Usage: /preshipment <path/to/manifest.json> [--export html|json|csv]'));
+          if (fs.existsSync('sample_shipments')) {
+            console.log(chalk.gray('Available sample shipment manifests:'));
+            const files = fs.readdirSync('sample_shipments');
+            files.forEach((f) => console.log(`  sample_shipments/${f}`));
+          }
+        } else {
+          const exportIndex = args.indexOf('--export');
+          const exportFmt = exportIndex !== -1 ? args[exportIndex + 1] : undefined;
+          const targetManifest = args.find((a) => !a.startsWith('--') && a !== exportFmt) || args[0];
+          await handlePreShipment(targetManifest, { export: exportFmt });
+        }
+        break;
+
       case '/review':
         if (args.length < 2) {
           console.log(chalk.yellow('Usage: /review <section|flag_id> --accept|--reject [--note "..."]'));
@@ -337,10 +374,14 @@ export class ComplianceChatBot {
 
   private async answerRegulatoryQuestion(question: string, forceDeep: boolean = false): Promise<void> {
     const isDeep = forceDeep || this.deepThinkingMode;
-    let precedents = this.db.getAllPrecedents();
+    const dbPrecedents = this.db.getAllPrecedents();
+    let precedents = dbPrecedents;
     if (this.isPgConnected) {
       try {
-        precedents = await this.pg.getAllPrecedents();
+        const pgPrecedents = await this.pg.getAllPrecedents();
+        if (pgPrecedents.length >= precedents.length) {
+          precedents = pgPrecedents;
+        }
       } catch {
         // fallback
       }
@@ -353,7 +394,9 @@ export class ComplianceChatBot {
       this.cache
     );
 
-    const modelLabel = isDeep ? 'gemma4:latest [Deep Thinking]' : 'ornith-1.5:9b [Auditor]';
+    const modelLabel = isDeep
+      ? 'meta/muse-spark-1.3-contributor [Deep Thinking]'
+      : 'meta/muse-spark-1.3-contributor [Auditor]';
     console.log(chalk.dim(`\nSearching FDA precedent database & synthesizing regulatory analysis (${modelLabel})...`));
 
     const pseudoSection = {
@@ -375,15 +418,18 @@ export class ComplianceChatBot {
     const top = matches[0].precedent;
     const top2 = matches[1]?.precedent;
 
-    // Synthesize using local Ollama model if online
+    // Synthesize using OpenRouter meta/muse-spark-1.3-contributor
     let aiSynthesis: string | null = null;
-    if (this.isOllamaConnected) {
+    let aiReasoning: string | undefined = undefined;
+    if (this.isOpenRouterConnected) {
       try {
-        aiSynthesis = await this.ollama.generateAnswer(
+        const result = await this.openRouter.askQuestion(
           question,
           matches.map((m) => m.precedent),
           isDeep
         );
+        aiSynthesis = result.answer;
+        aiReasoning = result.reasoning;
       } catch {
         // Fallback to structured precedent card
       }
@@ -393,8 +439,19 @@ export class ComplianceChatBot {
 
     if (aiSynthesis) {
       answerLines.push(
-        chalk.bold.cyan(`FDA Regulatory Audit Analysis  ${isDeep ? chalk.magenta.bold('[gemma4:latest Deep Thinking]') : chalk.cyan('[ornith-1.5:9b Auditor]')}`),
-        '',
+        chalk.bold.cyan(`FDA Regulatory Audit Analysis  ${isDeep ? chalk.magenta.bold('[meta/muse-spark-1.3-contributor Deep Thinking]') : chalk.cyan('[meta/muse-spark-1.3-contributor Auditor]')}`),
+        ''
+      );
+
+      if (aiReasoning && isDeep) {
+        answerLines.push(
+          chalk.magenta.bold('🧠 Muse-Spark Deep Thinking Thought:'),
+          chalk.dim.italic(`"${aiReasoning.slice(0, 300)}${aiReasoning.length > 300 ? '...' : ''}"`),
+          ''
+        );
+      }
+
+      answerLines.push(
         chalk.white(aiSynthesis),
         '',
         chalk.gray('─'.repeat(64)),
@@ -448,7 +505,8 @@ export class ComplianceChatBot {
     console.log(chalk.bold.white('\nAvailable Commands & Conversational Capabilities:'));
     console.log(chalk.gray('─'.repeat(65)));
     console.log(`  ${chalk.cyan('/scan <file> [--deep]')}    Scan an SOP file (.pdf, .docx, .md, .txt)`);
-    console.log(`  ${chalk.cyan('/deep [question]')}        Ask or toggle deep chain-of-thought analysis (gemma4:latest)`);
+    console.log(`  ${chalk.cyan('/preshipment <file>')}      Audit U.S. export shipment across 10 regulatory gates`);
+    console.log(`  ${chalk.cyan('/deep [question]')}        Ask or toggle deep chain-of-thought analysis (meta/muse-spark-1.3-contributor)`);
     console.log(`  ${chalk.cyan('/explain <section>')}      Deep dive into a finding (e.g. /explain 4.2)`);
     console.log(`  ${chalk.cyan('/export [format]')}        Export report to json, csv, or html`);
     console.log(`  ${chalk.cyan('/review <flag>')}          Log human-in-the-loop review (--accept/--reject)`);
@@ -460,6 +518,8 @@ export class ComplianceChatBot {
     console.log(chalk.bold.white('Natural Questions You Can Ask:'));
     console.log(chalk.dim('  • "What are the FDA requirements for deviation investigations?"'));
     console.log(chalk.dim('  • "What is maximum dirty hold time under 21 CFR 211.67?"'));
+    console.log(chalk.dim('  • "Check shipment sample_shipments/atorvastatin_tablets_export_pass.json"'));
+    console.log(chalk.dim('  • "Audit shipment sample_shipments/amoxicillin_capsules_export_fail.json"'));
     console.log(chalk.dim('  • "Can operators share administrator logins on QC instruments?"'));
     console.log(chalk.dim('  • "/deep Analyze the root-cause investigation requirements for out-of-specification results"'));
     console.log(chalk.dim('  • "Scan sample_sops/sop_deviation_handling.md"'));

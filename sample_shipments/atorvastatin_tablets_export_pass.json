@@ -1,0 +1,103 @@
+{
+  "shipmentId": "EXP-US-2024-8801",
+  "exportDate": "2024-10-15",
+  "productType": "FINISHED_DRUG",
+  "facility": {
+    "name": "BioPharm Formulations India Ltd (Unit 2)",
+    "address": "Plot 42-45 GIDC Industrial Estate, Ankleshwar, Gujarat 393002, India",
+    "country": "India",
+    "feiNumber": "3004829102",
+    "dunsNumber": "918234710",
+    "fdaRegistrationCurrent": true,
+    "registrationRenewalDate": "2024-11-30",
+    "manufacturingActivitiesIncluded": true,
+    "usAgentName": "Acme Regulatory Solutions LLC",
+    "usAgentContact": "contact@acmeregulatory.com / +1-202-555-0198",
+    "usImportersIdentified": true,
+    "listedInDecrs": true,
+    "activeEnforcementActions": false
+  },
+  "product": {
+    "productName": "Atorvastatin Calcium Tablets USP",
+    "activeIngredients": ["Atorvastatin Calcium Trihydrate"],
+    "strength": "20 mg",
+    "dosageForm": "Film-Coated Tablet",
+    "routeOfAdministration": "Oral",
+    "countryOfOrigin": "India",
+    "intendedUsUse": "Prescription human pharmaceutical for hypercholesterolemia treatment",
+    "legalPathway": "ANDA",
+    "applicationNumber": "ANDA 204891",
+    "pathwayVerified": true,
+    "manufacturedAccordanceWithApproval": true
+  },
+  "listing": {
+    "ndc": "72891-204-90",
+    "listingSubmitted": true,
+    "correspondsToActualManufacturer": true,
+    "eListStatus": "CURRENT",
+    "matchesPhysicalProduct": true,
+    "requiredUpdatesSubmitted": true
+  },
+  "cgmp": {
+    "approvedSopsCurrent": true,
+    "employeeTrainingRecordsCurrent": true,
+    "bmrComplete": true,
+    "bprComplete": true,
+    "openCriticalDeviations": 0,
+    "openOosInvestigations": 0,
+    "capaCompleted": true,
+    "changeControlsCompleted": true,
+    "equipmentCalibrationCurrent": true,
+    "cleaningValidationCurrent": true,
+    "environmentalMonitoringCompliant": true,
+    "stabilityTestingAcceptable": true,
+    "rawMaterialsAndSuppliersQualified": true,
+    "finishedSpecsMet": true
+  },
+  "batchRelease": {
+    "batchNumber": "AT24-0982",
+    "mfgDate": "2024-09-12",
+    "expDate": "2026-08-31",
+    "quantity": "500,000 tablets (5,000 bottles x 100 ct)",
+    "coaGenerated": true,
+    "allQcTestsPassed": true,
+    "noUnresolvedCriticalDeviations": true,
+    "noUnresolvedOos": true,
+    "packagingInspectionPassed": true,
+    "labelInspectionPassed": true,
+    "qaReleaseSignoff": true,
+    "qaOfficerName": "Dr. R. K. Sharma (VP & Head of Quality Assurance)",
+    "qaSignoffDate": "2024-10-10"
+  },
+  "labeling": {
+    "physicalLabelInspected": true,
+    "storageConditionsDeclared": "Store at 20°C to 25°C (68°F to 77°F); excursions permitted to 15°C to 30°C",
+    "productNameAndStrengthMatched": true,
+    "activeIngredientsListed": true,
+    "lotAndExpOnContainer": true,
+    "noMisleadingOrUnauthorizedClaims": true,
+    "fdaApprovedLabelingMatched": true,
+    "requiredUsWarningsIncluded": true
+  },
+  "importAlerts": {
+    "searchedImportAlertDatabase": true,
+    "onImportAlert": false,
+    "alertNumbers": [],
+    "firmOnDebarmentList": false
+  },
+  "customs": {
+    "commercialInvoiceValid": true,
+    "packingListValid": true,
+    "billOfLadingOrAwb": "AWB-618-99482103",
+    "htsCode": "3004.90.9200",
+    "fdaProductCode": "65P--01",
+    "affirmationsOfCompliance": [
+      { "code": "REG", "qualifier": "3004829102" },
+      { "code": "DLS", "qualifier": "72891-204-90" },
+      { "code": "AND", "qualifier": "204891" }
+    ],
+    "consigneeImporterName": "PrimeHealth Distribution Corp, Cranbury, NJ, USA",
+    "consigneeImporterAddress": "1200 Logistics Boulevard, Suite 400, Cranbury, NJ 08512",
+    "entryDataMatchesFdaRecords": true
+  }
+}

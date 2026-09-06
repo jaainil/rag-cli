@@ -1,0 +1,103 @@
+{
+  "shipmentId": "EXP-API-2024-5022",
+  "exportDate": "2024-10-25",
+  "productType": "API",
+  "facility": {
+    "name": "SunChem API Intermediates Ltd",
+    "address": "Plot 88 Chemical Zone, Dahej, Gujarat 392130, India",
+    "country": "India",
+    "feiNumber": "3007129031",
+    "dunsNumber": "901238912",
+    "fdaRegistrationCurrent": true,
+    "registrationRenewalDate": "2024-12-15",
+    "manufacturingActivitiesIncluded": true,
+    "usAgentName": "SunChem Americas Corp",
+    "usAgentContact": "regulatory@sunchem-us.com / +1-312-555-0144",
+    "usImportersIdentified": true,
+    "listedInDecrs": true,
+    "activeEnforcementActions": false
+  },
+  "product": {
+    "productName": "Metformin Hydrochloride USP (API)",
+    "activeIngredients": ["Metformin Hydrochloride"],
+    "strength": "100.2% on dried basis",
+    "dosageForm": "Active Pharmaceutical Ingredient (Crystalline Powder)",
+    "routeOfAdministration": "Oral Bulk Substance",
+    "countryOfOrigin": "India",
+    "intendedUsUse": "Active pharmaceutical ingredient for commercial solid oral dosage manufacturing",
+    "legalPathway": "DMF_API",
+    "applicationNumber": "DMF 032145",
+    "pathwayVerified": true,
+    "manufacturedAccordanceWithApproval": true
+  },
+  "listing": {
+    "ndc": "58921-001-01",
+    "listingSubmitted": true,
+    "correspondsToActualManufacturer": true,
+    "eListStatus": "CURRENT",
+    "matchesPhysicalProduct": true,
+    "requiredUpdatesSubmitted": true
+  },
+  "cgmp": {
+    "approvedSopsCurrent": true,
+    "employeeTrainingRecordsCurrent": true,
+    "bmrComplete": true,
+    "bprComplete": true,
+    "openCriticalDeviations": 0,
+    "openOosInvestigations": 0,
+    "capaCompleted": true,
+    "changeControlsCompleted": true,
+    "equipmentCalibrationCurrent": true,
+    "cleaningValidationCurrent": true,
+    "environmentalMonitoringCompliant": true,
+    "stabilityTestingAcceptable": true,
+    "rawMaterialsAndSuppliersQualified": true,
+    "finishedSpecsMet": true
+  },
+  "batchRelease": {
+    "batchNumber": "MET-API-2024-819",
+    "mfgDate": "2024-09-05",
+    "expDate": "2029-08-31",
+    "quantity": "10,000 kg (400 fibre drums x 25 kg)",
+    "coaGenerated": true,
+    "allQcTestsPassed": true,
+    "noUnresolvedCriticalDeviations": true,
+    "noUnresolvedOos": true,
+    "packagingInspectionPassed": true,
+    "labelInspectionPassed": true,
+    "qaReleaseSignoff": true,
+    "qaOfficerName": "P. M. Patel (Director of Quality Control & Regulatory Affairs)",
+    "qaSignoffDate": "2024-10-01"
+  },
+  "labeling": {
+    "physicalLabelInspected": true,
+    "storageConditionsDeclared": "Store at 20°C to 25°C (68°F to 77°F). Preserve in well-closed containers.",
+    "productNameAndStrengthMatched": true,
+    "activeIngredientsListed": true,
+    "lotAndExpOnContainer": true,
+    "noMisleadingOrUnauthorizedClaims": true,
+    "fdaApprovedLabelingMatched": true,
+    "requiredUsWarningsIncluded": true
+  },
+  "importAlerts": {
+    "searchedImportAlertDatabase": true,
+    "onImportAlert": false,
+    "alertNumbers": [],
+    "firmOnDebarmentList": false
+  },
+  "customs": {
+    "commercialInvoiceValid": true,
+    "packingListValid": true,
+    "billOfLadingOrAwb": "BOL-OCN-9921401",
+    "htsCode": "2925.29.9000",
+    "fdaProductCode": "60P--01",
+    "affirmationsOfCompliance": [
+      { "code": "REG", "qualifier": "3007129031" },
+      { "code": "DLS", "qualifier": "58921-001-01" },
+      { "code": "DMF", "qualifier": "032145" }
+    ],
+    "consigneeImporterName": "US Generic Formulations LLC, Parsippany, NJ",
+    "consigneeImporterAddress": "100 Interpace Parkway, Parsippany, NJ 07054",
+    "entryDataMatchesFdaRecords": true
+  }
+}

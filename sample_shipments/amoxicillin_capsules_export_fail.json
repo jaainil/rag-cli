@@ -1,0 +1,96 @@
+{
+  "shipmentId": "EXP-US-2024-9104",
+  "exportDate": "2024-10-18",
+  "productType": "FINISHED_DRUG",
+  "facility": {
+    "name": "Apex Generics Pvt Ltd",
+    "address": "Survey 112/B, Sanand Industrial Area, Ahmedabad, Gujarat, India",
+    "country": "India",
+    "feiNumber": "3011928471",
+    "dunsNumber": "981203491",
+    "fdaRegistrationCurrent": false,
+    "manufacturingActivitiesIncluded": true,
+    "usAgentName": "Apex Global US Reps",
+    "usAgentContact": "info@apexus.com",
+    "usImportersIdentified": false,
+    "listedInDecrs": false,
+    "activeEnforcementActions": true
+  },
+  "product": {
+    "productName": "Amoxicillin Capsules USP",
+    "activeIngredients": ["Amoxicillin Trihydrate"],
+    "strength": "500 mg",
+    "dosageForm": "Capsule, Hard Gelatin",
+    "routeOfAdministration": "Oral",
+    "countryOfOrigin": "India",
+    "intendedUsUse": "Antibacterial prescription therapy",
+    "legalPathway": "ANDA",
+    "applicationNumber": "ANDA 065219",
+    "pathwayVerified": true,
+    "manufacturedAccordanceWithApproval": false
+  },
+  "listing": {
+    "ndc": "69201-500-20",
+    "listingSubmitted": false,
+    "correspondsToActualManufacturer": false,
+    "eListStatus": "MISSING",
+    "matchesPhysicalProduct": false,
+    "requiredUpdatesSubmitted": false
+  },
+  "cgmp": {
+    "approvedSopsCurrent": true,
+    "employeeTrainingRecordsCurrent": false,
+    "bmrComplete": false,
+    "bprComplete": true,
+    "openCriticalDeviations": 2,
+    "openOosInvestigations": 1,
+    "capaCompleted": false,
+    "changeControlsCompleted": false,
+    "equipmentCalibrationCurrent": false,
+    "cleaningValidationCurrent": false,
+    "environmentalMonitoringCompliant": false,
+    "stabilityTestingAcceptable": false,
+    "rawMaterialsAndSuppliersQualified": true,
+    "finishedSpecsMet": false
+  },
+  "batchRelease": {
+    "batchNumber": "AMX24-4011",
+    "mfgDate": "2024-09-20",
+    "expDate": "2026-09-30",
+    "quantity": "250,000 capsules (2,500 bottles x 100 ct)",
+    "coaGenerated": false,
+    "allQcTestsPassed": false,
+    "noUnresolvedCriticalDeviations": false,
+    "noUnresolvedOos": false,
+    "packagingInspectionPassed": false,
+    "labelInspectionPassed": true,
+    "qaReleaseSignoff": false
+  },
+  "labeling": {
+    "physicalLabelInspected": false,
+    "storageConditionsDeclared": "",
+    "productNameAndStrengthMatched": true,
+    "activeIngredientsListed": true,
+    "lotAndExpOnContainer": true,
+    "noMisleadingOrUnauthorizedClaims": true,
+    "fdaApprovedLabelingMatched": false,
+    "requiredUsWarningsIncluded": false
+  },
+  "importAlerts": {
+    "searchedImportAlertDatabase": true,
+    "onImportAlert": true,
+    "alertNumbers": ["66-40 (Detention Without Physical Examination of Drugs Due to CGMP Deficiencies)"],
+    "firmOnDebarmentList": false
+  },
+  "customs": {
+    "commercialInvoiceValid": false,
+    "packingListValid": true,
+    "billOfLadingOrAwb": "AWB-702-11094821",
+    "htsCode": "3004.10.1010",
+    "fdaProductCode": "60P--01",
+    "affirmationsOfCompliance": [],
+    "consigneeImporterName": "Apex US Warehouse Inc, Newark, NJ",
+    "consigneeImporterAddress": "500 Port Reading Ave, Newark, NJ",
+    "entryDataMatchesFdaRecords": false
+  }
+}

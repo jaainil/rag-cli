@@ -6,6 +6,7 @@ import { handleScan } from './commands/scan';
 import { handleExplain } from './commands/explain';
 import { handleExport } from './commands/export';
 import { handleConfig } from './commands/config';
+import { handlePreShipment } from './commands/preShipment';
 import { handleReview, handleDatasetStats, handleDatasetAdd, handleHistory } from './commands/stubs';
 import { ComplianceChatBot } from './interactive/chatBot';
 
@@ -36,12 +37,28 @@ program
   .description('Run compliance scan on a single SOP file (.pdf, .docx, .txt, .md) or directory')
   .option('-e, --export <format>', 'Export format immediately after scan (json, csv, html)')
   .option('-o, --output <path>', 'Custom destination path for exported report')
-  .option('-d, --deep', 'Enable deep analytical reasoning via local gemma4:latest model')
+  .option('-d, --deep', 'Enable deep analytical reasoning via meta/muse-spark-1.3-contributor')
   .action(async (target, options) => {
     try {
       await handleScan(target, options);
     } catch (err: any) {
       console.error(`Scan failed: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+// 1b. U.S. Pharma Export Pre-Shipment 10-Gate Audit Command
+program
+  .command('preshipment <dossier>')
+  .alias('export-check')
+  .description('U.S. Pharma Export — Pre-Shipment Master 10-Gate Regulatory Audit (Facility, Product, Listing, Approval, cGMP, Batch Release, Label, Import Alert, Customs, DO-NOT-SHIP Gate)')
+  .option('-e, --export <format>', 'Export format (json, csv, html) to generate Defense Dossier')
+  .option('-o, --output <path>', 'Custom output destination path')
+  .action(async (dossier, options) => {
+    try {
+      await handlePreShipment(dossier, options);
+    } catch (err: any) {
+      console.error(`Pre-shipment audit failed: ${err.message}`);
       process.exit(1);
     }
   });

@@ -14,10 +14,13 @@ export async function handleConfig(key?: string, value?: string): Promise<void> 
   if (key && value !== undefined) {
     const validKeys = [
       'llmProvider',
+      'openrouterApiKey',
       'anthropicApiKey',
       'openaiApiKey',
       'geminiApiKey',
       'modelName',
+      'embeddingModel',
+      'rerankModel',
       'similarityThreshold',
       'vectorEngine',
       'qdrantUrl',
@@ -80,9 +83,10 @@ export async function handleConfig(key?: string, value?: string): Promise<void> 
     `${chalk.gray('Local Fallback:')}    ${chalk.cyan(db.getDbPath())}`,
     '',
     `${chalk.gray('LLM Reasoning:')}    ${chalk.yellow.bold(config.llmProvider)}`,
-    `${chalk.gray('Anthropic Key:')}    ${mask(config.anthropicApiKey)}`,
-    `${chalk.gray('OpenAI Key:')}       ${mask(config.openaiApiKey)}`,
-    `${chalk.gray('Model Choice:')}     ${config.modelName || 'claude-3-5-sonnet-20241022'}`,
+    `${chalk.gray('OpenRouter Key:')}   ${mask(config.openrouterApiKey)}`,
+    `${chalk.gray('Model Choice:')}     ${config.modelName || 'meta/muse-spark-1.3-contributor'}`,
+    `${chalk.gray('Embedding Model:')}  ${config.embeddingModel || 'openai/text-embedding-3-small'}`,
+    `${chalk.gray('Reranker Model:')}   ${config.rerankModel || 'voyageai/rerank-2.5'}`,
     `${chalk.gray('Sim Threshold:')}    ${chalk.bold(config.similarityThreshold)}`,
   ].join('\n');
 

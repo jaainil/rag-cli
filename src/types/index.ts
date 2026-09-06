@@ -71,12 +71,17 @@ export interface ScanReport {
 }
 
 export interface AppConfig {
-  llmProvider: 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'offline';
+  llmProvider: 'openrouter' | 'anthropic' | 'openai' | 'gemini' | 'offline';
+  openrouterApiKey?: string;
   anthropicApiKey?: string;
   openaiApiKey?: string;
   geminiApiKey?: string;
   modelName?: string;
+  embeddingModel?: string;
+  rerankModel?: string;
   similarityThreshold: number;
   vectorEngine: 'pgvector' | 'sqlite-local' | 'qdrant';
   qdrantUrl?: string;
 }
+
+export * from './preshipment';
