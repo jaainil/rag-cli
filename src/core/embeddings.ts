@@ -1,27 +1,51 @@
 import crypto from 'crypto';
 import { DragonflyCacheManager } from '../cache/dragonfly';
+import { OllamaClient } from './ollamaClient';
 
 export class EmbeddingEngine {
-  private dimension: number = 128;
+  private dimension: number = 1024;
   private apiKey?: string;
   private cache: DragonflyCacheManager;
+  private ollama: OllamaClient;
+  private useOllama: boolean = true;
 
   constructor(apiKey?: string, cache?: DragonflyCacheManager) {
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || process.env.VOYAGE_API_KEY;
     this.cache = cache || new DragonflyCacheManager();
+    this.ollama = new OllamaClient(this.cache);
+    this.useOllama = process.env.LLM_PROVIDER === 'ollama' || !this.apiKey;
+  }
+
+  public getDimension(): number {
+    return this.dimension;
   }
 
   /**
    * Generates a normalized dense vector for the given text with Dragonfly caching.
    */
   public async embed(text: string): Promise<number[]> {
-    // Check Dragonfly cache first
+    // 1. Check Dragonfly cache first
     const cached = await this.cache.getCachedEmbedding(text);
     if (cached && cached.length === this.dimension) {
       return cached;
     }
 
     let vector: number[];
+
+    // 2. Try Ollama local embedding (qwen3-embedding:8b)
+    if (this.useOllama) {
+      try {
+        vector = await this.ollama.embed(text);
+        if (vector && vector.length === this.dimension) {
+          await this.cache.setCachedEmbedding(text, vector);
+          return vector;
+        }
+      } catch {
+        // Fallback to local deterministic generator
+      }
+    }
+
+    // 3. Fallback to remote API if configured
     if (this.apiKey && process.env.USE_REMOTE_EMBEDDINGS === 'true') {
       try {
         vector = await this.embedRemote(text);
@@ -38,7 +62,7 @@ export class EmbeddingEngine {
   }
 
   /**
-   * Deterministic local embedding generator.
+   * Deterministic local embedding generator (1024 dimensions).
    */
   public embedLocal(text: string): number[] {
     const vector = new Array(this.dimension).fill(0);
@@ -94,7 +118,7 @@ export class EmbeddingEngine {
     }
 
     const data = (await response.json()) as any;
-    return data.data[0].embedding;
+    return data.data[0].embedding.slice(0, this.dimension);
   }
 
   private murmurHash(key: string): number {
@@ -108,7 +132,7 @@ export class EmbeddingEngine {
   }
 
   public static cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length || a.length === 0) return 0;
+    if (!a || !b || a.length !== b.length || a.length === 0) return 0;
     let dot = 0;
     let normA = 0;
     let normB = 0;

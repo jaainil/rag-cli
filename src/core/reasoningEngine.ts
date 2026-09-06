@@ -1,18 +1,33 @@
 import { SOPSection, PrecedentFlag, FlaggedIssue, RiskLevel, MatchedPrecedentRef } from '../types';
 import { RetrievalResult } from './hybridRetriever';
+import { OllamaClient } from './ollamaClient';
 
 export class RegulatoryReasoningEngine {
   private apiKey?: string;
-  private provider: 'anthropic' | 'openai' | 'gemini' | 'offline';
+  private provider: 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'offline';
+  private ollama: OllamaClient;
+  private deepThinking: boolean = false;
 
-  constructor(provider?: 'anthropic' | 'openai' | 'gemini' | 'offline', apiKey?: string) {
-    this.provider = provider || (process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : 'offline');
+  constructor(
+    provider?: 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'offline',
+    apiKey?: string,
+    deepThinking: boolean = false
+  ) {
+    this.provider =
+      provider ||
+      (process.env.LLM_PROVIDER as any) ||
+      (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'ollama');
     this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
+    this.ollama = new OllamaClient();
+    this.deepThinking = deepThinking;
+  }
+
+  public setDeepThinking(enabled: boolean): void {
+    this.deepThinking = enabled;
   }
 
   /**
    * Analyzes an individual SOP section against its top retrieved precedent citations.
-   * Returns a FlaggedIssue if a genuine regulatory compliance risk exists, or null if compliant.
    */
   public async analyzeSection(
     section: SOPSection,
@@ -22,24 +37,38 @@ export class RegulatoryReasoningEngine {
 
     const topMatch = retrievals[0];
 
-    // Check if remote LLM is available
-    if (this.provider === 'anthropic' && this.apiKey) {
+    // 1. Try Ollama local AI (ornith-1.5:9b or gemma4:latest for deep thinking)
+    if (this.provider === 'ollama') {
+      try {
+        const isAvailable = await this.ollama.isAvailable();
+        if (isAvailable) {
+          const result = await this.ollama.analyzeSection(
+            section,
+            topMatch.precedent,
+            this.deepThinking
+          );
+          if (result) return result;
+        }
+      } catch {
+        // Fallback to deterministic cGMP rules
+      }
+    } else if (this.provider === 'anthropic' && this.apiKey) {
       try {
         const result = await this.callClaude(section, topMatch);
         if (result) return result;
-      } catch (err) {
-        // Fallback to deterministic local analysis
+      } catch {
+        // Fallback
       }
     } else if (this.provider === 'openai' && this.apiKey) {
       try {
         const result = await this.callOpenAI(section, topMatch);
         if (result) return result;
-      } catch (err) {
-        // Fallback to local
+      } catch {
+        // Fallback
       }
     }
 
-    // High-fidelity local deterministic regulatory reasoning engine
+    // 2. High-fidelity local deterministic regulatory reasoning fallback
     return this.analyzeDeterministic(section, topMatch);
   }
 
@@ -175,7 +204,6 @@ export class RegulatoryReasoningEngine {
     ) {
       const isSharedAdmin = text.includes('shared') || text.includes('system clocks');
       const isAuditOmission = text.includes('printouts is sufficient') || text.includes('conducted periodically');
-      const isArchival = text.includes('purged') || text.includes('local instrument');
 
       return {
         id: `FLAG-${section.sectionNumber.replace(/[^a-zA-Z0-9]/g, '-')}`,

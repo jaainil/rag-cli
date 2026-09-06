@@ -18,13 +18,15 @@ export class ConfigManager {
 
   private loadConfig(): AppConfig {
     const defaults: AppConfig = {
-      llmProvider: (process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : 'offline'),
+      llmProvider:
+        (process.env.LLM_PROVIDER as any) ||
+        (process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : 'ollama'),
       anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
       openaiApiKey: process.env.OPENAI_API_KEY || '',
       geminiApiKey: process.env.GEMINI_API_KEY || '',
-      modelName: 'claude-3-5-sonnet-20241022',
+      modelName: process.env.OLLAMA_MODEL || 'ornith-1.5:9b',
       similarityThreshold: 0.6,
-      vectorEngine: 'sqlite-local',
+      vectorEngine: process.env.DATABASE_URL ? 'pgvector' : 'sqlite-local',
     };
 
     if (fs.existsSync(this.configPath)) {

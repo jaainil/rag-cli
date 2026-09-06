@@ -7,3 +7,4 @@ compliance_report_*.*
 test_out.*
 data/*.zip
 data/drug-enforcement-*.json
+output/

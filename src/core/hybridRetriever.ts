@@ -2,6 +2,7 @@ import { PrecedentFlag, SOPSection } from '../types';
 import { EmbeddingEngine } from './embeddings';
 import { PostgresManager } from '../db/postgres';
 import { DragonflyCacheManager } from '../cache/dragonfly';
+import { OllamaClient } from './ollamaClient';
 
 export interface RetrievalResult {
   precedent: PrecedentFlag;
@@ -10,6 +11,7 @@ export interface RetrievalResult {
   bm25Score: number;
   recencyFactor: number;
   feedbackMultiplier: number;
+  rerankScore?: number;
 }
 
 export class HybridRetriever {
@@ -18,6 +20,7 @@ export class HybridRetriever {
   private embeddingEngine: EmbeddingEngine;
   private pgManager?: PostgresManager;
   private cache: DragonflyCacheManager;
+  private ollama: OllamaClient;
   private currentYear: number = 2026;
 
   // BM25 parameters
@@ -36,6 +39,7 @@ export class HybridRetriever {
     this.cache = cache || new DragonflyCacheManager();
     this.embeddingEngine = embeddingEngine || new EmbeddingEngine(undefined, this.cache);
     this.pgManager = pgManager;
+    this.ollama = new OllamaClient(this.cache);
     this.initIndices();
   }
 
@@ -106,7 +110,7 @@ export class HybridRetriever {
   }
 
   /**
-   * Hybrid retrieval with PostgreSQL pgvector and Dragonfly caching.
+   * Hybrid retrieval with PostgreSQL pgvector, BM25, and Ollama cross-encoder re-ranking.
    */
   public async retrieveMatches(section: SOPSection, topK: number = 3): Promise<RetrievalResult[]> {
     const queryText = `${section.title} ${section.content} ${section.keyEntities.join(' ')}`;
@@ -121,12 +125,13 @@ export class HybridRetriever {
     const queryTokens = this.tokenize(queryText);
     const queryVector = await this.embeddingEngine.embed(queryText);
 
+    let candidates: RetrievalResult[] = [];
+
     // 2. Check if native pgvector is available
     if (this.pgManager) {
       try {
         const pgResults = await this.pgManager.vectorSearch(queryVector, topK * 4);
         if (pgResults && pgResults.length > 0) {
-          const candidates: RetrievalResult[] = [];
           let maxBm25 = 0.0001;
           const bm25Scores: number[] = [];
 
@@ -154,56 +159,76 @@ export class HybridRetriever {
               feedbackMultiplier: feedback,
             });
           }
-
-          candidates.sort((a, b) => b.finalScore - a.finalScore);
-          const topMatches = candidates.slice(0, topK);
-
-          // Cache in Dragonfly
-          await this.cache.setCachedQueryResult(cacheKey, topMatches, 1800);
-          return topMatches;
         }
       } catch (err) {
-        // Fallback to in-memory/local if PG call errors
+        // Fallback to in-memory/local
       }
     }
 
-    // 3. Fallback: Local Vector Cosine + BM25
-    const candidates: RetrievalResult[] = [];
-    let maxBm25 = 0.0001;
-    const bm25Scores: number[] = [];
+    // 3. Fallback: In-Memory / SQLite candidates if PG empty
+    if (candidates.length === 0) {
+      let maxBm25 = 0.0001;
+      const bm25Scores: number[] = [];
 
-    for (const prec of this.precedents) {
-      const precText = `${prec.category} ${prec.cfr_citation} ${prec.issue_summary} ${prec.excerpt} ${prec.keywords.join(' ')}`;
-      const bScore = this.calculateBM25(queryTokens, precText);
-      bm25Scores.push(bScore);
-      if (bScore > maxBm25) maxBm25 = bScore;
+      for (const prec of this.precedents) {
+        const precText = `${prec.category} ${prec.cfr_citation} ${prec.issue_summary} ${prec.excerpt} ${prec.keywords.join(' ')}`;
+        const bScore = this.calculateBM25(queryTokens, precText);
+        bm25Scores.push(bScore);
+        if (bScore > maxBm25) maxBm25 = bScore;
+      }
+
+      for (let i = 0; i < this.precedents.length; i++) {
+        const prec = this.precedents[i];
+        const precVec = this.precedentVectors.get(prec.id) || [];
+        const vScore = Math.max(0, EmbeddingEngine.cosineSimilarity(queryVector, precVec));
+        const normBm25 = Math.min(1.0, bm25Scores[i] / maxBm25);
+        const recency = this.calculateRecencyDecay(prec.date_issued);
+        const feedback = prec.feedback_score ?? 1.0;
+        const finalScore = (0.6 * vScore + 0.4 * normBm25) * recency * feedback;
+
+        candidates.push({
+          precedent: prec,
+          finalScore,
+          vectorScore: vScore,
+          bm25Score: normBm25,
+          recencyFactor: recency,
+          feedbackMultiplier: feedback,
+        });
+      }
     }
 
-    for (let i = 0; i < this.precedents.length; i++) {
-      const prec = this.precedents[i];
-      const precVec = this.precedentVectors.get(prec.id) || [];
-      const vScore = Math.max(0, EmbeddingEngine.cosineSimilarity(queryVector, precVec));
-      const normBm25 = Math.min(1.0, bm25Scores[i] / maxBm25);
-      const recency = this.calculateRecencyDecay(prec.date_issued);
-      const feedback = prec.feedback_score ?? 1.0;
-
-      const finalScore = (0.6 * vScore + 0.4 * normBm25) * recency * feedback;
-
-      candidates.push({
-        precedent: prec,
-        finalScore,
-        vectorScore: vScore,
-        bm25Score: normBm25,
-        recencyFactor: recency,
-        feedbackMultiplier: feedback,
-      });
-    }
-
+    // Sort descending by initial finalScore
     candidates.sort((a, b) => b.finalScore - a.finalScore);
-    const topMatches = candidates.slice(0, topK);
+    const topCandidates = candidates.slice(0, Math.max(topK, 5));
+
+    // 4. Apply Ollama re-ranking with pdurugyan/qwen3-reranker-0.6b-q8_0:latest
+    try {
+      const docsForRerank = topCandidates.map((c) => ({
+        id: c.precedent.id,
+        text: `${c.precedent.issue_summary} ${c.precedent.excerpt.slice(0, 300)}`,
+      }));
+
+      const reranked = await this.ollama.rerank(section.content.slice(0, 500), docsForRerank);
+      const scoreMap = new Map(reranked.map((r) => [r.id, r.score]));
+
+      for (const cand of topCandidates) {
+        const rerankVal = scoreMap.get(cand.precedent.id);
+        if (rerankVal !== undefined) {
+          cand.rerankScore = rerankVal;
+          // Blend 50% hybrid score + 50% cross-encoder re-rank score
+          cand.finalScore = cand.finalScore * 0.5 + rerankVal * 0.5;
+        }
+      }
+
+      topCandidates.sort((a, b) => b.finalScore - a.finalScore);
+    } catch {
+      // Re-ranking fallback
+    }
+
+    const finalTop = topCandidates.slice(0, topK);
 
     // Cache in Dragonfly
-    await this.cache.setCachedQueryResult(cacheKey, topMatches, 1800);
-    return topMatches;
+    await this.cache.setCachedQueryResult(cacheKey, finalTop, 1800);
+    return finalTop;
   }
 }

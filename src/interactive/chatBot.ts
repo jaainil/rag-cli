@@ -12,6 +12,7 @@ import { handleExplain } from '../commands/explain';
 import { handleExport } from '../commands/export';
 import { handleReview, handleDatasetStats, handleHistory } from '../commands/stubs';
 import { HybridRetriever } from '../core/hybridRetriever';
+import { OllamaClient } from '../core/ollamaClient';
 import { ConfigManager } from '../utils/configManager';
 import { ScanReport } from '../types';
 
@@ -19,18 +20,22 @@ export class ComplianceChatBot {
   private db: DatabaseManager;
   private pg: PostgresManager;
   private cache: DragonflyCacheManager;
+  private ollama: OllamaClient;
   private configManager: ConfigManager;
   private lastReport: ScanReport | null = null;
   private activeSopPath: string | null = null;
   private isRunning: boolean = false;
   private isPgConnected: boolean = false;
   private isCacheConnected: boolean = false;
+  private isOllamaConnected: boolean = false;
+  private deepThinkingMode: boolean = false;
 
   constructor() {
     this.db = new DatabaseManager();
     seedDatabase(this.db);
     this.pg = new PostgresManager();
     this.cache = new DragonflyCacheManager();
+    this.ollama = new OllamaClient(this.cache);
     this.configManager = new ConfigManager();
     this.lastReport = this.db.getLatestScanReport();
   }
@@ -49,6 +54,12 @@ export class ComplianceChatBot {
       this.isPgConnected = count > 0;
     } catch {
       this.isPgConnected = false;
+    }
+
+    try {
+      this.isOllamaConnected = await this.ollama.isAvailable();
+    } catch {
+      this.isOllamaConnected = false;
     }
 
     await this.renderWelcomeBanner();
@@ -104,7 +115,6 @@ export class ComplianceChatBot {
 
     console.log(banner);
 
-    const config = this.configManager.getConfig();
     let count = this.db.getPrecedentCount();
     if (this.isPgConnected) {
       try {
@@ -122,10 +132,24 @@ export class ComplianceChatBot {
       ? chalk.green('Dragonfly Redis [Active]')
       : chalk.dim('Memory / Disabled');
 
+    const ollamaStatus = this.isOllamaConnected
+      ? chalk.green('Ollama Local AI [Online]')
+      : chalk.yellow('Deterministic Rules Engine');
+
+    const aiModels = this.isOllamaConnected
+      ? `${chalk.cyan('ornith-1.5:9b')} (Auditor) & ${chalk.magenta('gemma4:latest')} (Deep Thinking)`
+      : chalk.dim('Deterministic cGMP Rules');
+
+    const embedModel = this.isOllamaConnected
+      ? `${chalk.cyan('qwen3-embedding:8b')} (1024-dim MRL) + ${chalk.cyan('qwen3-reranker-0.6b')}`
+      : chalk.dim('Keyword / BM25');
+
     const statusCard = [
       `${chalk.bold.white('Interactive Compliance Chatbot')}  ${chalk.dim('(OpenCode style)')}`,
       `${chalk.green('●')} ${chalk.gray('Database:')} ${dbStatus}  |  ${chalk.gray('Cache:')} ${cacheStatus}`,
-      `${chalk.green('●')} ${chalk.gray('Knowledge Base:')} ${chalk.cyan.bold(`${count} FDA Precedents`)}  |  ${chalk.gray('Reasoning:')} ${chalk.yellow(config.llmProvider.toUpperCase())}`,
+      `${chalk.green('●')} ${chalk.gray('Local AI:')} ${ollamaStatus}  |  ${chalk.gray('Auditor Models:')} ${aiModels}`,
+      `${chalk.green('●')} ${chalk.gray('Retrieval:')} ${embedModel}  |  ${chalk.gray('Knowledge Base:')} ${chalk.cyan.bold(`${count} FDA Precedents`)}`,
+      `${chalk.green('●')} ${chalk.gray('Reasoning Mode:')} ${this.deepThinkingMode ? chalk.magenta.bold('DEEP THINKING (gemma4:latest)') : chalk.cyan('Standard Auditor (ornith-1.5:9b)')}`,
       this.lastReport
         ? `${chalk.gray('Active SOP:')} ${chalk.white.bold(this.lastReport.filename)} (${this.lastReport.flagCount} flags logged)`
         : `${chalk.gray('Active SOP:')} ${chalk.dim('None (type /scan <file> or drop an SOP to begin)')}`,
@@ -135,19 +159,20 @@ export class ComplianceChatBot {
       boxen(statusCard, {
         padding: { top: 0, bottom: 0, left: 2, right: 2 },
         margin: { top: 0, bottom: 1, left: 0, right: 0 },
-        borderColor: 'cyan',
+        borderColor: this.deepThinkingMode ? 'magenta' : 'cyan',
         borderStyle: 'round',
       })
     );
 
     console.log(chalk.gray('Type natural questions (e.g. ') + chalk.white('"What are FDA rules for cleaning hold times?"') + chalk.gray(') or slash commands:'));
-    console.log(chalk.dim('  /scan <file>      Scan an SOP file (.pdf, .docx, .md, .txt)'));
-    console.log(chalk.dim('  /explain <sec>    Deep dive into a flagged section (e.g. /explain 4.2)'));
-    console.log(chalk.dim('  /export [format]  Export report to json, csv, or html'));
-    console.log(chalk.dim('  /review <flag>    Review a flag (--accept or --reject)'));
-    console.log(chalk.dim('  /stats            Show FDA precedent database metrics'));
-    console.log(chalk.dim('  /history          View audit history log'));
-    console.log(chalk.dim('  /clear            Clear chat screen'));
+    console.log(chalk.dim('  /scan <file> [--deep] Scan an SOP file (.pdf, .docx, .md, .txt)'));
+    console.log(chalk.dim('  /deep [question]      Deep chain-of-thought analysis using gemma4:latest'));
+    console.log(chalk.dim('  /explain <sec>        Deep dive into a flagged section (e.g. /explain 4.2)'));
+    console.log(chalk.dim('  /export [format]      Export report to json, csv, or html'));
+    console.log(chalk.dim('  /review <flag>        Review a flag (--accept or --reject)'));
+    console.log(chalk.dim('  /stats                Show FDA precedent database metrics'));
+    console.log(chalk.dim('  /history              View audit history log'));
+    console.log(chalk.dim('  /clear                Clear chat screen'));
     console.log(chalk.dim('  /help             Display available commands'));
     console.log(chalk.dim('  /exit             Exit chat\n'));
   }
@@ -213,8 +238,8 @@ export class ComplianceChatBot {
       }
     }
 
-    // Conversational Regulatory Expert Q&A against PostgreSQL pgvector + Dragonfly cache
-    await this.answerRegulatoryQuestion(trimmed);
+    // Conversational Regulatory Expert Q&A against PostgreSQL pgvector + Dragonfly cache + Local Ollama
+    await this.answerRegulatoryQuestion(trimmed, this.deepThinkingMode);
   }
 
   private async handleSlashCommand(cmd: string, rl: readline.Interface): Promise<void> {
@@ -242,16 +267,31 @@ export class ComplianceChatBot {
         handleHistory(args[0]);
         break;
 
+      case '/deep':
+        if (args.length > 0) {
+          const deepQuery = args.join(' ');
+          await this.answerRegulatoryQuestion(deepQuery, true);
+        } else {
+          this.deepThinkingMode = !this.deepThinkingMode;
+          const statusStr = this.deepThinkingMode
+            ? chalk.magenta.bold('ENABLED (using gemma4:latest for deep chain-of-thought analysis)')
+            : chalk.cyan.bold('DISABLED (using ornith-1.5:9b for fast audit)');
+          console.log(chalk.white(`\nDeep Thinking mode is now ${statusStr}\n`));
+        }
+        break;
+
       case '/scan':
         if (!args[0]) {
-          console.log(chalk.yellow('Usage: /scan <path/to/sop.pdf|md|txt|docx>'));
+          console.log(chalk.yellow('Usage: /scan <path/to/sop.pdf|md|txt|docx> [--deep]'));
           if (fs.existsSync('sample_sops')) {
             console.log(chalk.gray('Available sample SOPs:'));
             const files = fs.readdirSync('sample_sops');
             files.forEach((f) => console.log(`  sample_sops/${f}`));
           }
         } else {
-          await this.executeScan(args[0]);
+          const isDeep = args.includes('--deep') || this.deepThinkingMode;
+          const scanTarget = args.find((a) => !a.startsWith('--')) || args[0];
+          await this.executeScan(scanTarget, isDeep);
         }
         break;
 
@@ -286,16 +326,17 @@ export class ComplianceChatBot {
     }
   }
 
-  private async executeScan(filePath: string): Promise<void> {
+  private async executeScan(filePath: string, deep?: boolean): Promise<void> {
     try {
-      this.lastReport = await handleScan(filePath, {});
+      this.lastReport = await handleScan(filePath, { deep: deep ?? this.deepThinkingMode });
       this.activeSopPath = filePath;
     } catch (err: any) {
       console.log(chalk.red(`Scan failed: ${err.message}\n`));
     }
   }
 
-  private async answerRegulatoryQuestion(question: string): Promise<void> {
+  private async answerRegulatoryQuestion(question: string, forceDeep: boolean = false): Promise<void> {
+    const isDeep = forceDeep || this.deepThinkingMode;
     let precedents = this.db.getAllPrecedents();
     if (this.isPgConnected) {
       try {
@@ -312,7 +353,8 @@ export class ComplianceChatBot {
       this.cache
     );
 
-    console.log(chalk.dim('\nSearching FDA Warning Letters, 483 Observations, and 21 CFR guidelines (pgvector + Dragonfly cache)...'));
+    const modelLabel = isDeep ? 'gemma4:latest [Deep Thinking]' : 'ornith-1.5:9b [Auditor]';
+    console.log(chalk.dim(`\nSearching FDA precedent database & synthesizing regulatory analysis (${modelLabel})...`));
 
     const pseudoSection = {
       sectionNumber: 'QUERY',
@@ -333,24 +375,54 @@ export class ComplianceChatBot {
     const top = matches[0].precedent;
     const top2 = matches[1]?.precedent;
 
-    const answerBox = [
-      `${chalk.bold.cyan('FDA Regulatory Guidance & Precedent Rationale')}`,
-      `${chalk.gray('Applicable Statute:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
-      `${chalk.gray('Regulatory Severity:')} ${top.severity === 'HIGH' ? chalk.red.bold('HIGH RISK (Warning Letter / Class I Recall)') : chalk.yellow.bold('MEDIUM RISK (483 Observation / Class II)')}`,
-      '',
-      chalk.bold.white('Precedent Finding:'),
-      chalk.white(`  ${top.issue_summary}`),
-      '',
-      chalk.bold.white('Historical FDA Citation Excerpt:'),
-      chalk.italic.gray(`  "${top.excerpt.slice(0, 240)}..."`),
-      chalk.dim(`  — ${top.source} (${top.company_redacted})`),
-      '',
-      chalk.bold.white('Auditor Remediation & Industry Standard:'),
-      chalk.greenBright(`  ${top.remediation_guidance}`),
-    ];
+    // Synthesize using local Ollama model if online
+    let aiSynthesis: string | null = null;
+    if (this.isOllamaConnected) {
+      try {
+        aiSynthesis = await this.ollama.generateAnswer(
+          question,
+          matches.map((m) => m.precedent),
+          isDeep
+        );
+      } catch {
+        // Fallback to structured precedent card
+      }
+    }
+
+    const answerLines: string[] = [];
+
+    if (aiSynthesis) {
+      answerLines.push(
+        chalk.bold.cyan(`FDA Regulatory Audit Analysis  ${isDeep ? chalk.magenta.bold('[gemma4:latest Deep Thinking]') : chalk.cyan('[ornith-1.5:9b Auditor]')}`),
+        '',
+        chalk.white(aiSynthesis),
+        '',
+        chalk.gray('─'.repeat(64)),
+        chalk.bold.white('Matched FDA Statutory Precedent & Citation:'),
+        `${chalk.gray('CFR Citation:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
+        `${chalk.gray('Enforcement:')} ${chalk.white(top.source)} — ${chalk.italic.gray(`"${top.excerpt.slice(0, 180)}..."`)}`,
+        `${chalk.gray('Remediation:')} ${chalk.greenBright(top.remediation_guidance)}`
+      );
+    } else {
+      answerLines.push(
+        chalk.bold.cyan('FDA Regulatory Guidance & Precedent Rationale'),
+        `${chalk.gray('Applicable Statute:')} ${chalk.magenta.bold(top.cfr_citation)} (${top.category})`,
+        `${chalk.gray('Regulatory Severity:')} ${top.severity === 'HIGH' ? chalk.red.bold('HIGH RISK (Warning Letter / Class I Recall)') : chalk.yellow.bold('MEDIUM RISK (483 Observation / Class II)')}`,
+        '',
+        chalk.bold.white('Precedent Finding:'),
+        chalk.white(`  ${top.issue_summary}`),
+        '',
+        chalk.bold.white('Historical FDA Citation Excerpt:'),
+        chalk.italic.gray(`  "${top.excerpt.slice(0, 240)}..."`),
+        chalk.dim(`  — ${top.source} (${top.company_redacted})`),
+        '',
+        chalk.bold.white('Auditor Remediation & Industry Standard:'),
+        chalk.greenBright(`  ${top.remediation_guidance}`)
+      );
+    }
 
     if (top2 && top2.id !== top.id) {
-      answerBox.push(
+      answerLines.push(
         '',
         chalk.gray('Related Precedent:'),
         chalk.dim(`  • ${top2.source}: ${top2.issue_summary.slice(0, 90)}...`)
@@ -358,9 +430,9 @@ export class ComplianceChatBot {
     }
 
     console.log(
-      boxen(answerBox.join('\n'), {
+      boxen(answerLines.join('\n'), {
         padding: 1,
-        borderColor: 'cyan',
+        borderColor: isDeep ? 'magenta' : 'cyan',
         borderStyle: 'round',
         margin: { top: 1, bottom: 1, left: 0, right: 0 },
       })
@@ -370,19 +442,21 @@ export class ComplianceChatBot {
   private showHelp(): void {
     console.log(chalk.bold.white('\nAvailable Commands & Conversational Capabilities:'));
     console.log(chalk.gray('─'.repeat(65)));
-    console.log(`  ${chalk.cyan('/scan <file>')}          Scan an SOP file (.pdf, .docx, .md, .txt)`);
-    console.log(`  ${chalk.cyan('/explain <section>')}    Deep dive into a finding (e.g. /explain 4.2)`);
-    console.log(`  ${chalk.cyan('/export [format]')}      Export report to json, csv, or html`);
-    console.log(`  ${chalk.cyan('/review <flag>')}        Log human-in-the-loop review (--accept/--reject)`);
-    console.log(`  ${chalk.cyan('/stats')}                View FDA precedent database statistics`);
-    console.log(`  ${chalk.cyan('/history')}              View past scan history`);
-    console.log(`  ${chalk.cyan('/clear')}                Clear the screen`);
-    console.log(`  ${chalk.cyan('/exit')}                 Exit the chatbot`);
+    console.log(`  ${chalk.cyan('/scan <file> [--deep]')}    Scan an SOP file (.pdf, .docx, .md, .txt)`);
+    console.log(`  ${chalk.cyan('/deep [question]')}        Ask or toggle deep chain-of-thought analysis (gemma4:latest)`);
+    console.log(`  ${chalk.cyan('/explain <section>')}      Deep dive into a finding (e.g. /explain 4.2)`);
+    console.log(`  ${chalk.cyan('/export [format]')}        Export report to json, csv, or html`);
+    console.log(`  ${chalk.cyan('/review <flag>')}          Log human-in-the-loop review (--accept/--reject)`);
+    console.log(`  ${chalk.cyan('/stats')}                  View FDA precedent database statistics`);
+    console.log(`  ${chalk.cyan('/history')}                View past scan history`);
+    console.log(`  ${chalk.cyan('/clear')}                  Clear the screen`);
+    console.log(`  ${chalk.cyan('/exit')}                   Exit the chatbot`);
     console.log('');
     console.log(chalk.bold.white('Natural Questions You Can Ask:'));
     console.log(chalk.dim('  • "What are the FDA requirements for deviation investigations?"'));
     console.log(chalk.dim('  • "What is maximum dirty hold time under 21 CFR 211.67?"'));
     console.log(chalk.dim('  • "Can operators share administrator logins on QC instruments?"'));
+    console.log(chalk.dim('  • "/deep Analyze the root-cause investigation requirements for out-of-specification results"'));
     console.log(chalk.dim('  • "Scan sample_sops/sop_deviation_handling.md"'));
     console.log(chalk.dim('  • "Explain section 4.2"'));
     console.log(chalk.dim('  • "Export report as csv"\n'));

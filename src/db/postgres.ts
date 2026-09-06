@@ -2,30 +2,32 @@ import { Pool, PoolClient } from 'pg';
 import { PrecedentFlag, ScanReport, FlaggedIssue, RiskLevel } from '../types';
 
 export class PostgresManager {
-  private pool: Pool;
+  private pool: Pool | null = null;
   private connectionString: string;
   private isInitialized: boolean = false;
 
   constructor(customUrl?: string) {
-    this.connectionString =
-      customUrl ||
-      process.env.DATABASE_URL ||
-      'postgres://postgres:AjP0tiYJUoV7bnQKep0o55lrUbsEU9fpsb0D2HnrLavZ8wRtg6RzfCqglgpuc19a@82.180.144.20:3060/postgres';
+    this.connectionString = customUrl || process.env.DATABASE_URL || '';
+    if (this.connectionString) {
+      this.pool = new Pool({
+        connectionString: this.connectionString,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      });
+    }
+  }
 
-    this.pool = new Pool({
-      connectionString: this.connectionString,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
+  public isReady(): boolean {
+    return Boolean(this.pool);
   }
 
   public getConnectionString(): string {
-    return this.connectionString.replace(/:[^:@]+@/, ':****@'); // mask password
+    return this.connectionString ? this.connectionString.replace(/:[^:@]+@/, ':****@') : '';
   }
 
   public async initSchema(): Promise<void> {
-    if (this.isInitialized) return;
+    if (!this.pool || this.isInitialized) return;
     const client = await this.pool.connect();
 
     try {
@@ -106,6 +108,7 @@ export class PostgresManager {
   }
 
   public async getPrecedentCount(): Promise<number> {
+    if (!this.pool) return 0;
     await this.initSchema();
     const res = await this.pool.query('SELECT COUNT(*) as count FROM precedent_flags');
     return parseInt(res.rows[0]?.count || '0', 10);
@@ -115,6 +118,7 @@ export class PostgresManager {
     precedents: PrecedentFlag[],
     vectorGenerator?: (text: string) => number[]
   ): Promise<void> {
+    if (!this.pool) return;
     await this.initSchema();
     const client = await this.pool.connect();
 
@@ -180,6 +184,7 @@ export class PostgresManager {
     queryVector: number[],
     limit: number = 5
   ): Promise<(PrecedentFlag & { cosineSimilarity: number })[]> {
+    if (!this.pool) return [];
     await this.initSchema();
     const vecStr = `[${queryVector.join(',')}]`;
 
@@ -215,6 +220,7 @@ export class PostgresManager {
   }
 
   public async getAllPrecedents(): Promise<PrecedentFlag[]> {
+    if (!this.pool) return [];
     await this.initSchema();
     const res = await this.pool.query(`
       SELECT 
@@ -242,6 +248,7 @@ export class PostgresManager {
   }
 
   public async saveScanReport(report: ScanReport): Promise<void> {
+    if (!this.pool) return;
     await this.initSchema();
     const client = await this.pool.connect();
 
@@ -305,6 +312,7 @@ export class PostgresManager {
   }
 
   public async getLatestScanReport(): Promise<ScanReport | null> {
+    if (!this.pool) return null;
     await this.initSchema();
     const res = await this.pool.query('SELECT raw_report_json FROM scans ORDER BY scanned_at DESC LIMIT 1');
     if (res.rows.length === 0) return null;
@@ -312,6 +320,7 @@ export class PostgresManager {
   }
 
   public async getScanHistory(filename?: string): Promise<any[]> {
+    if (!this.pool) return [];
     await this.initSchema();
     if (filename) {
       const res = await this.pool.query(
@@ -328,6 +337,7 @@ export class PostgresManager {
   }
 
   public async logReview(flagId: string, decision: 'accept' | 'reject', note?: string): Promise<void> {
+    if (!this.pool) return;
     await this.initSchema();
     const client = await this.pool.connect();
 
@@ -368,6 +378,8 @@ export class PostgresManager {
   }
 
   public async close(): Promise<void> {
-    await this.pool.end();
+    if (this.pool) {
+      await this.pool.end();
+    }
   }
 }

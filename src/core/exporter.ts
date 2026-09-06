@@ -25,6 +25,11 @@ export class ReportExporter {
       throw new Error(`Unsupported export format: ${format}`);
     }
 
+    const dir = path.dirname(targetPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
     fs.writeFileSync(targetPath, content, 'utf-8');
     return targetPath;
   }

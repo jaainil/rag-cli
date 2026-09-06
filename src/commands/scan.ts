@@ -16,7 +16,7 @@ import { ScanReport, FlaggedIssue, PrecedentFlag } from '../types';
 
 export async function handleScan(
   targetPath: string,
-  options: { export?: string; output?: string }
+  options: { export?: string; output?: string; deep?: boolean } = {}
 ): Promise<ScanReport> {
   const startTime = Date.now();
   const db = new DatabaseManager();
@@ -52,7 +52,7 @@ export async function handleScan(
 
   const stat = fs.statSync(resolved);
   if (stat.isDirectory()) {
-    return handleDirectoryScan(resolved, precedents, db, pg, cache, config);
+    return handleDirectoryScan(resolved, precedents, db, pg, cache, config, options);
   }
 
   // 1. Loading SOP
@@ -74,12 +74,22 @@ export async function handleScan(
   // 3. Embedding + retrieving matches with pgvector & Dragonfly
   const retrieveSpinner = ora({ text: 'Embedding + retrieving matches...', color: 'cyan' }).start();
   const retriever = new HybridRetriever(precedents, undefined, isPgActive ? pg : undefined, cache);
-  const reasoningEngine = new RegulatoryReasoningEngine(config.llmProvider, config.anthropicApiKey || config.openaiApiKey);
+  const isDeep = Boolean(options.deep);
+  const reasoningEngine = new RegulatoryReasoningEngine(
+    config.llmProvider,
+    config.anthropicApiKey || config.openaiApiKey,
+    isDeep
+  );
   const dbLabel = isPgActive ? 'PostgreSQL 18 pgvector' : 'SQLite Local';
   retrieveSpinner.succeed(`Embedding + retrieving matches...  ${chalk.green('done')} (${precedents.length} FDA precedents via ${dbLabel} + Dragonfly cache)`);
 
   // 4. Running risk analysis
-  const analyzeSpinner = ora({ text: 'Running risk analysis...', color: 'cyan' }).start();
+  const modelLabel = isDeep
+    ? 'gemma4:latest [Deep Thinking]'
+    : config.llmProvider === 'ollama'
+    ? 'ornith-1.5:9b [Local AI]'
+    : config.llmProvider.toUpperCase();
+  const analyzeSpinner = ora({ text: `Running risk analysis (${modelLabel})...`, color: 'cyan' }).start();
   const flags: FlaggedIssue[] = [];
 
   for (const section of sections) {
@@ -90,7 +100,7 @@ export async function handleScan(
     }
   }
 
-  analyzeSpinner.succeed(`Running risk analysis...           ${chalk.green('done')}`);
+  analyzeSpinner.succeed(`Running risk analysis (${modelLabel})...  ${chalk.green('done')}`);
 
   const highCount = flags.filter((f) => f.riskLevel === 'HIGH').length;
   const mediumCount = flags.filter((f) => f.riskLevel === 'MEDIUM').length;
@@ -151,7 +161,8 @@ async function handleDirectoryScan(
   db: DatabaseManager,
   pg: PostgresManager,
   cache: DragonflyCacheManager,
-  config: any
+  config: any,
+  options: { export?: string; output?: string; deep?: boolean } = {}
 ): Promise<ScanReport> {
   console.log(chalk.cyan(`Scanning directory: ${dirPath}\n`));
   const files = fs.readdirSync(dirPath).filter((f) => {
@@ -171,7 +182,7 @@ async function handleDirectoryScan(
 
   for (const f of files) {
     console.log(chalk.bold.cyan(`▶ ${f}`));
-    const report = await handleScan(path.join(dirPath, f), {});
+    const report = await handleScan(path.join(dirPath, f), options);
     totalSections += report.sectionCount;
     totalFlags += report.flagCount;
     lastReport = report;

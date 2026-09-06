@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import path from 'path';
@@ -7,6 +10,7 @@ import { ReportExporter } from '../src/core/exporter';
 
 describe('End-to-End Scan & Exporter', () => {
   it('should scan sample SOP and flag Section 4.2, 6.1, 9.0', async () => {
+    process.env.LLM_PROVIDER = 'offline';
     const docPath = path.join(__dirname, '..', 'sample_sops', 'sop_deviation_handling.md');
     const report = await handleScan(docPath, {});
 

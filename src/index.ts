@@ -36,6 +36,7 @@ program
   .description('Run compliance scan on a single SOP file (.pdf, .docx, .txt, .md) or directory')
   .option('-e, --export <format>', 'Export format immediately after scan (json, csv, html)')
   .option('-o, --output <path>', 'Custom destination path for exported report')
+  .option('-d, --deep', 'Enable deep analytical reasoning via local gemma4:latest model')
   .action(async (target, options) => {
     try {
       await handleScan(target, options);

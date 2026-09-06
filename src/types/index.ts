@@ -67,12 +67,12 @@ export interface ScanReport {
 }
 
 export interface AppConfig {
-  llmProvider: 'anthropic' | 'openai' | 'gemini' | 'offline';
+  llmProvider: 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'offline';
   anthropicApiKey?: string;
   openaiApiKey?: string;
   geminiApiKey?: string;
   modelName?: string;
   similarityThreshold: number;
-  vectorEngine: 'sqlite-local' | 'qdrant';
+  vectorEngine: 'pgvector' | 'sqlite-local' | 'qdrant';
   qdrantUrl?: string;
 }

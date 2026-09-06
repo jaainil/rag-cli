@@ -7,7 +7,11 @@ export class DragonflyCacheManager {
   private defaultTtl: number = 86400; // 24 hours
 
   constructor(redisUrl?: string) {
-    const url = redisUrl || process.env.REDIS_URL || 'redis://:uN8Z5blCOO2Vu8LfW5Qzdd9q87MPnTD9F2xnO2Cij0b8ffHyNTkMh5kLDcqLHEq9@82.180.144.20:3006/0';
+    const url = redisUrl || process.env.REDIS_URL;
+    if (!url) {
+      this.isConnected = false;
+      return;
+    }
     try {
       this.redis = new Redis(url, {
         maxRetriesPerRequest: 2,
