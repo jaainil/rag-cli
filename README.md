@@ -32,6 +32,7 @@ CLI (Node.js / TypeScript / Commander.js)
 
 ## 2. Key Capabilities (Demo Scope)
 
+- **Interactive Terminal Chatbot (OpenCode Style):** Run `compliance-check` or `npm start` with zero arguments to enter an interactive conversational REPL. Ask regulatory questions, scan files, explain sections, and review findings conversationally.
 - **Zero-Setup Execution:** Works 100% locally out-of-the-box using embedded SQLite. No Docker containers or cloud accounts needed for the demo.
 - **200+ Curated FDA Precedents:** Pre-loaded with 225 Warning Letters and 483 citations across deviation timelines, cleaning validation, data integrity/audit trails, aseptic controls, and quality unit oversight.
 - **Clean Terminal UI:** Real-time step progress spinners, risk breakdown badges (`[HIGH]`, `[MEDIUM]`, `[LOW]`), and quotation excerpts.
@@ -55,8 +56,12 @@ npm run build
 # Run automated test suite
 npm test
 
-# Run demo scan
-npm run demo
+# 1. Start OpenCode-style interactive chatbot (Default)
+compliance-check
+# or: npm start
+
+# 2. Or run scripted pipeline scan directly
+compliance-check scan sample_sops/sop_deviation_handling.md
 ```
 
 The CLI binary is located at `./bin/compliance-check.js`. If installed globally or symlinked into your `PATH`:

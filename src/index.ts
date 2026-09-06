@@ -4,6 +4,7 @@ import { handleExplain } from './commands/explain';
 import { handleExport } from './commands/export';
 import { handleConfig } from './commands/config';
 import { handleReview, handleDatasetStats, handleDatasetAdd, handleHistory } from './commands/stubs';
+import { ComplianceChatBot } from './interactive/chatBot';
 
 const program = new Command();
 
@@ -11,6 +12,20 @@ program
   .name('compliance-check')
   .description('Pharma SOP Regulatory Risk Checker — Evaluates SOPs against historical FDA citations & cGMP regulations')
   .version('1.0.0');
+
+// 0. Interactive Chat Command (OpenCode style)
+program
+  .command('chat')
+  .description('Start interactive compliance chatbot session (default when no args provided)')
+  .action(async () => {
+    try {
+      const bot = new ComplianceChatBot();
+      await bot.start();
+    } catch (err: any) {
+      console.error(`Chatbot error: ${err.message}`);
+      process.exit(1);
+    }
+  });
 
 // 1. Scan Command
 program
@@ -120,7 +135,6 @@ const configCmd = program
       if (action === 'set' && key && value !== undefined) {
         handleConfig(key, value);
       } else if (action && !key && !value) {
-        // e.g. compliance-check config key
         handleConfig(action, undefined);
       } else {
         handleConfig();
@@ -131,8 +145,10 @@ const configCmd = program
     }
   });
 
-program.parse(process.argv);
-
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
+// If launched without CLI subcommands, start interactive chatbot (OpenCode style)
+if (process.argv.slice(2).length === 0) {
+  const bot = new ComplianceChatBot();
+  bot.start();
+} else {
+  program.parse(process.argv);
 }
